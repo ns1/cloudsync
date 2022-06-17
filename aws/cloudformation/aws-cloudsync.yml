@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  IAMRoleForLambdaFunctionGetRoute53RecordSet:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: "Route53"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:ListResourceRecordSets
+                Resource: arn:aws:route53:::hostedzone/*
+
+  r53Topic:
+    Type: AWS::SNS::Topic
+    Properties: 
+      TopicName: cloudsync-r53-events
+  
+  r53HTTPSSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref r53Topic
+      Endpoint:  https://333b-68-161-187-233.ngrok.io
+      Protocol: https
+      RawMessageDelivery: true
+
+  SNSPublishPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties: 
+      PolicyDocument:
+        Id: SNSPublishPolicy
+        Version: '2012-10-17'
+        Statement:
+        - Sid: My-statement-id
+          Effect: Allow
+          Principal:
+            Service:
+            - events.amazonaws.com
+          Action: sns:Publish
+          Resource: !Ref r53Topic
+      Topics:
+        - !Ref r53Topic
+  
+  r53EventRule:
+    Type: AWS::Events::Rule
+    DeletionPolicy: Delete
+    Properties:
+      Description: Notify on R53 changes
+      EventBusName: default
+      State: ENABLED
+      Name: r53CloudSyncEventRule
+      EventPattern:
+        source:
+          - aws.route53
+        detail-type:
+          - 'AWS API Call via CloudTrail'
+        detail:
+          eventSource:
+            - route53.amazonaws.com
+          eventName:
+            - CreateHostedZone
+            - DeleteHostedZone
+            - UpdateHostedZoneComment
+            - ChangeResourceRecordSets
+
+      Targets: 
+        - Arn: !Ref r53Topic
+          Id: r53CloudSyncNotifications
