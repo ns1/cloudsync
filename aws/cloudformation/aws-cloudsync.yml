@@ -89,5 +89,7 @@ Resources:
       Targets: 
         - Arn: !Ref r53Topic
           Id: r53CloudSyncNotifications
-        - Arn: !Ref LambdaFunctionRoute53
+        - Arn: !GetAtt 
+            - LambdaFunctionRoute53
+            - Arn
           Id: r53CloudSyncNotificationsLambda
