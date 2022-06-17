@@ -3,6 +3,7 @@ name: Push AWS Lambda to S3
 on: 
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   upload-lambda:
