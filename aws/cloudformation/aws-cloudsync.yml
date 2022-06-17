@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Resources:
-  IAMRoleForLambdaFunctionGetRoute53RecordSet:
+  IAMRoleForLambdaFunctionRoute53:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -23,6 +23,17 @@ Resources:
                 Action:
                   - route53:ListResourceRecordSets
                 Resource: arn:aws:route53:::hostedzone/*
+  
+  LambdaFunctionRoute53:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.9
+      Timeout: 10
+      Role: !GetAtt IAMRoleForLambdaFunctionRoute53.Arn
+      Code:
+        S3Bucket: cloudsync-v2-lambda
+        S3Key: cloudsync-lambda.zip
 
   r53Topic:
     Type: AWS::SNS::Topic
@@ -75,7 +86,8 @@ Resources:
             - DeleteHostedZone
             - UpdateHostedZoneComment
             - ChangeResourceRecordSets
-
       Targets: 
         - Arn: !Ref r53Topic
           Id: r53CloudSyncNotifications
+        - Arn: !Ref LambdaFunctionRoute53
+          Id: r53CloudSyncNotificationsLambda
