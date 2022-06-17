@@ -9,8 +9,8 @@ jobs:
   upload-lambda:
     runs-on: ubuntu-latest
     steps:
-      - name: Make artifact directory
-        run: mkdir ./artifacts
+      - uses: actions/checkout@v2
+      - run: mkdir ./artifacts
 
       - name: Create Zip File
         uses: montudor/action-zip@v0.1.0
