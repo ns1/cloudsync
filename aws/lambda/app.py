@@ -9,7 +9,6 @@ def lambda_handler(event, context):
 
     if (src := event.get('source')) is None or src != 'aws.route53':
         print(f'received out-of-band message')
-        print(event)
         return
     
     detail = event.get('detail')
