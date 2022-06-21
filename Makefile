@@ -11,6 +11,14 @@ check-aws-cli:
 .PHONY: checks
 checks: check-aws-cli
 
+.PHONY: update-lambda
+update-lambda: check-aws-cli
+	@aws lambda update-function-code --function-name LambdaFunctionRoute53 --s3-bucket ${BUCKET} --s3-key cloudsync-lambda.zip --profile ${PROFILE}
+
+.PHONY: update-layer
+update-layer: check-aws-cli
+	@aws lambda publish-layer-version --layer-name LambdaFunctionRequestsLayer --content S3Bucket=${BUCKET},S3Key=layer.zip --compatible-runtimes python3.9 --profile ${PROFILE}
+
 .PHONY: push-lambda-func
 push-lambda-func: checks
 push-lambda-func:
