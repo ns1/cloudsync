@@ -1,11 +1,16 @@
+import os
+import json
+
 import boto3
 from botocore.exceptions import ClientError
+
+import requests
 
 def lambda_handler(event, context):
     try:
         route53 = boto3.client('route53')
     except ClientError as err:
-        print(f"Error getting route53 client: {err}")
+        print(f"Error getting Route 53 client: {err}")
 
     if (src := event.get('source')) is None or src != 'aws.route53':
         print(f'received out-of-band message')
@@ -45,5 +50,21 @@ def lambda_handler(event, context):
             if msg['soa_ttl'] is None:
                 print(f"SOA record not found for zone with id {msg['zone_id']}")
                 return
+
+        endpoint = os.environ.get('ENDPOINT')
+        if endpoint is None:
+            print("ENDPOINT env variable not set")
+            return
+        
+        json_msg = json.dumps(msg)
+        headers = {
+            'content-type' : 'application/json',
+            'content-length' : str(len(json_msg))
+        }
+        response = requests.put(endpoint, data=json_msg, headers=headers)
+
+        if response.status_code != 200:
+            print(f"PUT to {endpoint} failed with {response.status_code}: {response.content}")
+            return
         
         return msg

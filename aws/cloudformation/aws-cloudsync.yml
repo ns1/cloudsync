@@ -1,5 +1,8 @@
 AWSTemplateFormatVersion: 2010-09-09
 Resources:
+  LambdaDeadLetterQueue: 
+    Type: AWS::SQS::Queue
+
   IAMRoleForLambdaFunctionRoute53:
     Type: AWS::IAM::Role
     Properties:
@@ -23,6 +26,22 @@ Resources:
                 Action:
                   - route53:ListResourceRecordSets
                 Resource: arn:aws:route53:::hostedzone/*
+        - PolicyName: SQSDeadLetter
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt LambdaDeadLetterQueue.Arn
+
+  LambdaFunctionRequestsLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      CompatibleRuntimes:
+        - python3.9
+      Content:
+        S3Bucket: cloudsync-v2-lambda
+        S3Key: layer.zip
   
   LambdaFunctionRoute53:
     Type: AWS::Lambda::Function
@@ -31,6 +50,13 @@ Resources:
       Runtime: python3.9
       Timeout: 10
       Role: !GetAtt IAMRoleForLambdaFunctionRoute53.Arn
+      Layers:
+        - !Ref LambdaFunctionRequestsLayer
+      DeadLetterConfig:
+        TargetArn: !GetAtt LambdaDeadLetterQueue.Arn
+      Environment:
+        Variables:
+          ENDPOINT: https://333b-68-161-187-233.ngrok.io
       Code:
         S3Bucket: cloudsync-v2-lambda
         S3Key: cloudsync-lambda.zip
@@ -43,36 +69,6 @@ Resources:
       Principal: events.amazonaws.com
       SourceAccount: !Ref 'AWS::AccountId'
       SourceArn: !GetAtt r53EventRule.Arn
-
-  r53Topic:
-    Type: AWS::SNS::Topic
-    Properties: 
-      TopicName: cloudsync-r53-events
-  
-  r53HTTPSSubscription:
-    Type: AWS::SNS::Subscription
-    Properties:
-      TopicArn: !Ref r53Topic
-      Endpoint:  https://333b-68-161-187-233.ngrok.io
-      Protocol: https
-      RawMessageDelivery: true
-
-  SNSPublishPolicy:
-    Type: AWS::SNS::TopicPolicy
-    Properties: 
-      PolicyDocument:
-        Id: SNSPublishPolicy
-        Version: '2012-10-17'
-        Statement:
-        - Sid: My-statement-id
-          Effect: Allow
-          Principal:
-            Service:
-            - events.amazonaws.com
-          Action: sns:Publish
-          Resource: !Ref r53Topic
-      Topics:
-        - !Ref r53Topic
   
   r53EventRule:
     Type: AWS::Events::Rule
@@ -96,8 +92,6 @@ Resources:
             - UpdateHostedZoneComment
             - ChangeResourceRecordSets
       Targets: 
-        - Arn: !Ref r53Topic
-          Id: r53CloudSyncNotifications
         - Arn: !GetAtt 
             - LambdaFunctionRoute53
             - Arn
