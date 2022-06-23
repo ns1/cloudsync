@@ -13,7 +13,7 @@ checks: check-aws-cli
 
 .PHONY: update-lambda
 update-lambda: check-aws-cli
-	@aws lambda update-function-code --function-name LambdaFunctionRoute53 --s3-bucket ${BUCKET} --s3-key cloudsync-lambda.zip --profile ${PROFILE}
+	@aws lambda update-function-code --function-name r53cloudsync-LambdaFunctionRoute53-yv9toPYNmtlH --s3-bucket ${BUCKET} --s3-key cloudsync-lambda.zip --profile ${PROFILE}
 
 .PHONY: update-layer
 update-layer: check-aws-cli
