@@ -91,6 +91,8 @@ Resources:
             - DeleteHostedZone
             - UpdateHostedZoneComment
             - ChangeResourceRecordSets
+          errorCode:
+            - exists: false
       Targets: 
         - Arn: !GetAtt 
             - LambdaFunctionRoute53
