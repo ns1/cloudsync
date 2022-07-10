@@ -33,7 +33,7 @@ def lambda_handler(event, context):
     msg = {
         'event': detail['eventName'],
         'time': detail['eventTime'],
-        'aws_account_id': detail['userIdentity']['accountId']
+        'aws_account_id': int(detail['userIdentity']['accountId'])
     }
     
     if msg['event'] == 'CreateHostedZone':
@@ -72,7 +72,9 @@ def lambda_handler(event, context):
 
     elif msg['event'] == 'DeleteHostedZone':
         msg['zone_id'] = detail['requestParameters']['id']
-        print(event)
+
+    elif msg['event'] == 'ChangeResourceRecordSets':
+        pass
 
     endpoint = os.environ.get('ENDPOINT')
     if endpoint is None:

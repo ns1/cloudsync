@@ -2,6 +2,9 @@ AWSTemplateFormatVersion: 2010-09-09
 Resources:
   LambdaDeadLetterQueue: 
     Type: AWS::SQS::Queue
+  
+  EventBridgeDeadLetterQueue:
+    Type: AWS::SQS::Queue
 
   IAMRoleForLambdaFunctionRoute53:
     Type: AWS::IAM::Role
@@ -98,3 +101,7 @@ Resources:
             - LambdaFunctionRoute53
             - Arn
           Id: r53CloudSyncNotificationsLambda
+          DeadLetterConfig:
+            Arn: !GetAtt EventBridgeDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 3
