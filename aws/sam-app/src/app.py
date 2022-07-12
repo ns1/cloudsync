@@ -1,10 +1,13 @@
+# must be the first import in files with lambda function handlers
+import lambdainit  # noqa: F401
+
 import os
 import json
 
+import requests
+
 import boto3
 from botocore.exceptions import ClientError
-
-import requests
 
 soa_value_map = ['nameserver', 'hostmaster', 'serial', 'refresh', 'retry', 'expiry', 'nx_ttl']
 
@@ -15,7 +18,7 @@ def cast_int(val):
         return val
     return ret
 
-def lambda_handler(event, context):
+def handler(event, context):
     try:
         route53 = boto3.client('route53')
     except ClientError as err:
@@ -76,8 +79,10 @@ def lambda_handler(event, context):
     elif msg['event'] == 'ChangeResourceRecordSets':
         pass
 
-    endpoint = os.environ.get('ENDPOINT')
-    if endpoint is None:
+    # insert NS1 org id
+    msg['org_id'] = os.environ.get('ORG_ID')
+
+    if (endpoint := os.environ.get('ENDPOINT')) and endpoint is None:
         print("ENDPOINT env variable not set")
         return
     

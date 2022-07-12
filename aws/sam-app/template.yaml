@@ -6,7 +6,7 @@ Description: This serverless application publishes AWS Route 53 events to NS1 Co
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 3
+    Timeout: 10
     Tracing: Active
   Api:
     TracingEnabled: True
@@ -25,11 +25,16 @@ Metadata:
     SemanticVersion: 1.0.0
     SourceCodeUrl: https://github.com/ns1/cloudsync/tree/1.0.0
 
-# Parameters:
-#   LogLevel:
-#     Type: String
-#     Description: Log level for Lambda function logging, e.g., ERROR, INFO, DEBUG, etc
-#     Default: INFO
+Parameters:
+  tracked_zones:
+    Type: CommaDelimitedList
+    Description: "Comma-delimited list of DNS zones to track"
+    Default: ""
+
+  ns1_org_id:
+    Type: Number
+    Description: "NS1 organization ID"
+    Default: 2000
 
 Resources:
   LambdaDeadLetterQueue: 
@@ -69,8 +74,8 @@ Resources:
   Route53toNS1Connect:
       Type: AWS::Serverless::Function
       Properties:
-        CodeUri: ./route53tons1
-        Handler: app.lambda_handler
+        CodeUri: ./src
+        Handler: app.handler
         Runtime: python3.9
         Timeout: 10
         Role: !GetAtt IAMRoleForLambdaFunctionRoute53.Arn
@@ -80,6 +85,7 @@ Resources:
         Environment:
           Variables:
             ENDPOINT: https://333b-68-161-187-233.ngrok.io
+            ORG_ID: !Ref ns1_org_id
         Events:
           EBRule:
             Type: EventBridgeRule
