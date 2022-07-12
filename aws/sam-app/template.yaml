@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: This serverless application publishes AWS Route 53 events to NS1 Connect.
+
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+    Tracing: Active
+  Api:
+    TracingEnabled: True
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: aws-route53-ns1-connect
+    Description: This serverless application publishes AWS Route 53 events to NS1 Connect.
+    Author: NS1
+    SpdxLicenseId: Apache 2.0
+    # paths are relative to .aws-sam/build directory
+    LicenseUrl: ../../LICENSE
+    ReadmeUrl: ../../README.md
+    Labels: [serverless, NS1, Route53]
+    HomePageUrl: https://github.com/ns1/cloudsync
+    SemanticVersion: 1.0.0
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/1.0.0
+
+# Parameters:
+#   LogLevel:
+#     Type: String
+#     Description: Log level for Lambda function logging, e.g., ERROR, INFO, DEBUG, etc
+#     Default: INFO
+
+Resources:
+  LambdaDeadLetterQueue: 
+    Type: AWS::SQS::Queue
+
+  IAMRoleForLambdaFunctionRoute53:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: Route53
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:ListResourceRecordSets
+                Resource: arn:aws:route53:::hostedzone/*
+        - PolicyName: SQSDeadLetter
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt LambdaDeadLetterQueue.Arn
+
+  Route53toNS1Connect:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: ./route53tons1
+        Handler: app.lambda_handler
+        Runtime: python3.9
+        Timeout: 10
+        Role: !GetAtt IAMRoleForLambdaFunctionRoute53.Arn
+        DeadLetterQueue:
+          Type: SQS
+          TargetArn: !GetAtt LambdaDeadLetterQueue.Arn
+        Environment:
+          Variables:
+            ENDPOINT: https://333b-68-161-187-233.ngrok.io
+        Events:
+          EBRule:
+            Type: EventBridgeRule
+            Properties:
+              Pattern:
+                detail:
+                  eventSource:
+                    - route53.amazonaws.com
+                  eventName:
+                    - CreateHostedZone
+                    - DeleteHostedZone
+                    - UpdateHostedZoneComment
+                    - ChangeResourceRecordSets
+                  errorCode:
+                    - exists: false
+              DeadLetterConfig:
+                Type: SQS
+              RetryPolicy:
+                MaximumRetryAttempts: 3
+        Policies:
+          - Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - sqs:SendMessage
+              Resource: !GetAtt LambdaDeadLetterQueue.Arn
+            - Effect: Allow
+              Action:
+                - route53:ListResourceRecordSets
+              Resource: arn:aws:route53:::hostedzone/*
