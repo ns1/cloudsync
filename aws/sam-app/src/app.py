@@ -11,6 +11,9 @@ from botocore.exceptions import ClientError
 
 soa_value_map = ['nameserver', 'hostmaster', 'serial', 'refresh', 'retry', 'expiry', 'nx_ttl']
 
+route53 = boto3.client('route53')
+
+
 def cast_int(val):
     try:
         ret = int(val)
@@ -18,12 +21,43 @@ def cast_int(val):
         return val
     return ret
 
-def handler(event, context):
-    try:
-        route53 = boto3.client('route53')
-    except ClientError as err:
-        print(f"Error getting Route 53 client: {err}")
+def build_zone(zone_info):
+    msg = dict()
+    msg['zone_id'] = zone_info['id'].split('/')[-1]
+    msg['zone_name'] = zone_info['name']
+    msg['zone_config'] = zone_info['config']
+    msg['num_records'] = zone_info['resourceRecordSetCount']
 
+    # Get the SOA and NS records
+    try:
+        response = route53.list_resource_record_sets(HostedZoneId=msg['zone_id'])
+    except route53.exceptions.NoSuchHostedZone:
+        print(f"zone with id {msg['zone_id']} not found")
+    
+    msg['soa_ttl'] = None
+    for record in response['ResourceRecordSets']:
+        if record['Type'] == 'SOA':
+            msg['soa_ttl'] = record['TTL']
+            values = [cast_int(v) for v in record['ResourceRecords'][0]['Value'].split()]
+            
+            if len(values) != len(soa_value_map):
+                print('malformed SOA value map')
+                return
+            
+            msg.update(dict(zip(soa_value_map, values)))
+            break
+
+        elif record['Type'] == 'NS':
+            msg['ns_ttl'] = record['TTL']
+    
+    if msg['soa_ttl'] is None:
+        print(f"SOA record not found for zone with id {msg['zone_id']}")
+        return
+    
+    return msg
+
+
+def handler(event, context):
     if (src := event.get('source')) is None or src != 'aws.route53':
         print(f'received out-of-band message')
         return
@@ -39,44 +73,13 @@ def handler(event, context):
         'aws_account_id': int(detail['userIdentity']['accountId'])
     }
     
-    if msg['event'] == 'CreateHostedZone':
-        zone_info = detail['responseElements']['hostedZone']
-        msg['zone_id'] = zone_info['id'].split('/')[-1]
-        msg['zone_name'] = zone_info['name']
-        msg['zone_config'] = zone_info['config']
-        msg['num_records'] = zone_info['resourceRecordSetCount']
-        msg['nameservers'] = detail['responseElements']['delegationSet']['nameServers']
+    if detail['eventName'] == 'CreateHostedZone':
+        msg.update(build_zone(detail['responseElements']['hostedZone']))
 
-        # Get the SOA and NS records
-        try:
-            response = route53.list_resource_record_sets(HostedZoneId=msg['zone_id'])
-        except route53.exceptions.NoSuchHostedZone:
-            print(f"zone with id {msg['zone_id']} not found")
-        
-        msg['soa_ttl'] = None
-        for record in response['ResourceRecordSets']:
-            if record['Type'] == 'SOA':
-                msg['soa_ttl'] = record['TTL']
-                values = [cast_int(v) for v in record['ResourceRecords'][0]['Value'].split()]
-                
-                if len(values) != len(soa_value_map):
-                    print('malformed SOA value map')
-                    return
-                
-                msg.update(dict(zip(soa_value_map, values)))
-                break
-
-            elif record['Type'] == 'NS':
-                msg['ns_ttl'] = record['TTL']
-        
-        if msg['soa_ttl'] is None:
-            print(f"SOA record not found for zone with id {msg['zone_id']}")
-            return
-
-    elif msg['event'] == 'DeleteHostedZone':
+    elif detail['eventName'] == 'DeleteHostedZone':
         msg['zone_id'] = detail['requestParameters']['id']
 
-    elif msg['event'] == 'ChangeResourceRecordSets':
+    elif detail['eventName'] == 'ChangeResourceRecordSets':
         pass
 
     # insert NS1 org id
