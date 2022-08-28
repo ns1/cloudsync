@@ -39,7 +39,7 @@ def snapshot():
     route53 = boto3.client('route53')
 
     response = route53.list_hosted_zones()
-    zones = {zone['Id'].split('/')[2]: {'fqdn': zone['Name']} for zone in response['HostedZones']}
+    zones = {zone['Id'].split('/')[-1]: {'fqdn': zone['Name']} for zone in response['HostedZones']}
 
         
 

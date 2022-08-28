@@ -49,6 +49,7 @@ def build_zone(zone_info):
 
         elif record['Type'] == 'NS':
             msg['ns_ttl'] = record['TTL']
+            msg['nameservers'] = [v['Value'] for v in record['ResourceRecords']]
     
     if msg['soa_ttl'] is None:
         print(f"SOA record not found for zone with id {msg['zone_id']}")

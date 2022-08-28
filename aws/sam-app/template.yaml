@@ -16,7 +16,7 @@ Metadata:
     Name: aws-route53-ns1-connect
     Description: This serverless application publishes AWS Route 53 events to NS1 Connect.
     Author: NS1
-    SpdxLicenseId: Apache 2.0
+    SpdxLicenseId: Apache-2.0
     # paths are relative to .aws-sam/build directory
     LicenseUrl: ../../LICENSE
     ReadmeUrl: ../../README.md
@@ -25,16 +25,16 @@ Metadata:
     SemanticVersion: 1.0.0
     SourceCodeUrl: https://github.com/ns1/cloudsync/tree/1.0.0
 
-Parameters:
-  tracked_zones:
-    Type: CommaDelimitedList
-    Description: "Comma-delimited list of DNS zones to track"
-    Default: ""
+# Parameters:
+#   tracked_zones:
+#     Type: CommaDelimitedList
+#     Description: "Comma-delimited list of DNS zones to track"
+#     Default: ""
 
-  ns1_org_id:
-    Type: Number
-    Description: "NS1 organization ID"
-    Default: 2000
+#   ns1_org_id:
+#     Type: Number
+#     Description: "NS1 organization ID"
+#     Default: 2000
 
 Resources:
   LambdaDeadLetterQueue: 
@@ -84,8 +84,8 @@ Resources:
           TargetArn: !GetAtt LambdaDeadLetterQueue.Arn
         Environment:
           Variables:
-            ENDPOINT: https://333b-68-161-187-233.ngrok.io
-            ORG_ID: !Ref ns1_org_id
+            ENDPOINT: https://ac50-68-161-187-233.ngrok.io
+            # ORG_ID: !Ref ns1_org_id
         Events:
           EBRule:
             Type: EventBridgeRule
