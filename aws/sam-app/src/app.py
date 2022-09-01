@@ -9,10 +9,11 @@ import requests
 import boto3
 from botocore.exceptions import ClientError
 
+from util import transform_dict_key
+
 soa_value_map = ['nameserver', 'hostmaster', 'serial', 'refresh', 'retry', 'expiry', 'nx_ttl']
 
 route53 = boto3.client('route53')
-
 
 def cast_int(val):
     try:
@@ -23,10 +24,13 @@ def cast_int(val):
 
 def build_zone(zone_info):
     msg = dict()
-    msg['zone_id'] = zone_info['id'].split('/')[-1]
-    msg['zone_name'] = zone_info['name']
-    msg['zone_config'] = zone_info['config']
-    msg['num_records'] = zone_info['resourceRecordSetCount']
+    zone_info = transform_dict_key(zone_info)
+    msg = {
+        'zone_id': zone_info['id'].split('/')[-1],
+        'zone_name': zone_info['name'],
+        'zone_config': zone_info['config'],
+        'num_records': zone_info['resourceRecordSetCount']
+    }
 
     # Get the SOA and NS records
     try:
@@ -57,7 +61,6 @@ def build_zone(zone_info):
     
     return msg
 
-
 def handler(event, context):
     if (src := event.get('source')) is None or src != 'aws.route53':
         print(f'received out-of-band message')
@@ -81,7 +84,9 @@ def handler(event, context):
         msg['zone_id'] = detail['requestParameters']['id']
 
     elif detail['eventName'] == 'ChangeResourceRecordSets':
-        pass
+        msg['changes'] = detail['requestParameters']['changeBatch']['changes']
+        msg['zone_id'] = detail['requestParameters']['hostedZoneId']
+
 
     # insert NS1 org id
     msg['org_id'] = os.environ.get('ORG_ID')
