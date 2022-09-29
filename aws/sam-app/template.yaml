@@ -74,7 +74,7 @@ Resources:
   Route53toNS1Connect:
       Type: AWS::Serverless::Function
       Properties:
-        CodeUri: ./src
+        CodeUri: ./src/dns_updates
         Handler: app.handler
         Runtime: python3.9
         Timeout: 10
@@ -84,8 +84,7 @@ Resources:
           TargetArn: !GetAtt LambdaDeadLetterQueue.Arn
         Environment:
           Variables:
-            ENDPOINT: https://ac50-68-161-187-233.ngrok.io
-            # ORG_ID: !Ref ns1_org_id
+            ENDPOINT: https://6d9d-173-77-147-196.ngrok.io
         Events:
           EBRule:
             Type: EventBridgeRule
@@ -116,3 +115,17 @@ Resources:
               Action:
                 - route53:ListResourceRecordSets
               Resource: arn:aws:route53:::hostedzone/*
+
+  # SnapshotFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     CodeUri: ./src/dns_snapshot
+  #     Handler: app.lambda_handler
+  #     Runtime: python3.9
+  #     Architectures:
+  #       - x86_64
+  
+  # SnapshotCustomResource:
+  #   Type: Custom::ZoneSnapshot
+  #   Properties:
+  #     ServiceToken: !GetAtt SnapshotFunction.Arn

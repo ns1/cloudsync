@@ -62,6 +62,7 @@ def build_zone(zone_info):
     return msg
 
 def handler(event, context):
+    print(event)
     if (src := event.get('source')) is None or src != 'aws.route53':
         print(f'received out-of-band message')
         return
