@@ -2,8 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: This serverless application publishes AWS Route 53 events to NS1 Connect.
 
-
-# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
     Timeout: 10
@@ -25,21 +23,70 @@ Metadata:
     SemanticVersion: 1.0.0
     SourceCodeUrl: https://github.com/ns1/cloudsync/tree/1.0.0
 
-# Parameters:
-#   tracked_zones:
-#     Type: CommaDelimitedList
-#     Description: "Comma-delimited list of DNS zones to track"
-#     Default: ""
-
-#   ns1_org_id:
-#     Type: Number
-#     Description: "NS1 organization ID"
-#     Default: 2000
-
 Resources:
-  LambdaDeadLetterQueue: 
+
+  # A queue to hold Route 53 updates for this account.
+  DNSUpdateQueue:
     Type: AWS::SQS::Queue
 
+  # An EventBridge rule that queues all Route 53 updates via CloudWatch.
+  EventRule: 
+    Type: AWS::Events::Rule
+    Properties: 
+      EventPattern: 
+        account: 
+          - !Sub '${AWS::AccountId}'
+        source:
+          - aws.route53
+        detail:
+          eventSource:
+            - route53.amazonaws.com
+          eventName:
+            - CreateHostedZone
+            - DeleteHostedZone
+            - UpdateHostedZoneComment
+            - ChangeResourceRecordSets
+          errorCode:
+            - exists: false
+      Targets: 
+        - Arn: !GetAtt DNSUpdateQueue.Arn
+          Id: "SQSqueue"
+
+  # A policy that allows the EventBridge rule to send messages to the queue.
+  EventBridgeToToSqsPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - Ref: DNSUpdateQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 
+              - SQS:SendMessage
+            Resource:  !GetAtt DNSUpdateQueue.Arn
+  
+  # A queue policy that allows a Lambda function residing in an NS1-controlled
+  # AWS account to read and delete messages from the queue.
+  NS1LambdaSqsAccessPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - Ref: DNSUpdateQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: 
+                - arn:aws:iam::249121138663:role/CloudSyncLambdaExecutionRole
+            Action: 
+              - SQS:ReceiveMessage
+              - SQS:DeleteMessage
+            Resource:  !GetAtt DNSUpdateQueue.Arn
+
+  # An IAM role that allows a Lambda residing in this account
+  # to query for Route 53 record sets.
   IAMRoleForLambdaFunctionRoute53:
     Type: AWS::IAM::Role
     Properties:
@@ -63,14 +110,16 @@ Resources:
                 Action:
                   - route53:ListResourceRecordSets
                 Resource: arn:aws:route53:::hostedzone/*
-        - PolicyName: SQSDeadLetter
-          PolicyDocument:
-            Statement:
               - Effect: Allow
                 Action:
-                  - sqs:SendMessage
-                Resource: !GetAtt LambdaDeadLetterQueue.Arn
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt DNSUpdateQueue.Arn
 
+  # A Lambda residing in this account that receives updates
+  # from Route 53 via an SQS queue, and does some minimal processing
+  # before sending off to NS1.
   Route53toNS1Connect:
       Type: AWS::Serverless::Function
       Properties:
@@ -79,42 +128,22 @@ Resources:
         Runtime: python3.9
         Timeout: 10
         Role: !GetAtt IAMRoleForLambdaFunctionRoute53.Arn
-        DeadLetterQueue:
-          Type: SQS
-          TargetArn: !GetAtt LambdaDeadLetterQueue.Arn
         Environment:
           Variables:
-            ENDPOINT: https://6d9d-173-77-147-196.ngrok.io
+            ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
         Events:
-          EBRule:
-            Type: EventBridgeRule
+          SQSEvent:
+            Type: SQS
             Properties:
-              Pattern:
-                detail:
-                  eventSource:
-                    - route53.amazonaws.com
-                  eventName:
-                    - CreateHostedZone
-                    - DeleteHostedZone
-                    - UpdateHostedZoneComment
-                    - ChangeResourceRecordSets
-                  errorCode:
-                    - exists: false
-              DeadLetterConfig:
-                Type: SQS
-              RetryPolicy:
-                MaximumRetryAttempts: 3
+              Queue: !GetAtt DNSUpdateQueue.Arn
+              BatchSize: 10
         Policies:
           - Version: '2012-10-17'
             Statement:
-            - Effect: Allow
-              Action:
-              - sqs:SendMessage
-              Resource: !GetAtt LambdaDeadLetterQueue.Arn
-            - Effect: Allow
-              Action:
-                - route53:ListResourceRecordSets
-              Resource: arn:aws:route53:::hostedzone/*
+              - Effect: Allow
+                Action:
+                  - route53:ListResourceRecordSets
+                Resource: arn:aws:route53:::hostedzone/*
 
   # SnapshotFunction:
   #   Type: AWS::Serverless::Function

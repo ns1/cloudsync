@@ -63,11 +63,20 @@ def build_zone(zone_info):
 
 def handler(event, context):
     print(event)
-    if (src := event.get('source')) is None or src != 'aws.route53':
-        print(f'received out-of-band message')
+
+    records = event.get('Records')
+    # TODO: Return an error to trigger a CloudWatch alarm 
+    if records is None:
+        print('malformed message')
+        return
+
+    try:
+        body = json.loads(records[0]['body'])
+    except json.JSONDecodeError:
+        print('malformed message body from Route 53')
         return
     
-    detail = event.get('detail')
+    detail = body.get('detail')
     if detail is None:
         print('malformed message')
         return
@@ -90,21 +99,21 @@ def handler(event, context):
 
 
     # insert NS1 org id
-    msg['org_id'] = os.environ.get('ORG_ID')
+    # msg['org_id'] = os.environ.get('ORG_ID')
 
     if (endpoint := os.environ.get('ENDPOINT')) and endpoint is None:
         print("ENDPOINT env variable not set")
         return
     
-    json_msg = json.dumps(msg)
+    json_msg = json.dumps({"message": msg})
     headers = {
         'content-type' : 'application/json',
         'content-length' : str(len(json_msg))
     }
-    response = requests.put(endpoint, data=json_msg, headers=headers)
+    response = requests.post(endpoint, data=json_msg, headers=headers)
 
     if response.status_code != 200:
-        print(f"PUT to {endpoint} failed with {response.status_code}: {response.content}")
+        print(f"POST to {endpoint} failed with {response.status_code}: {response.content}")
         return
         
     return msg
