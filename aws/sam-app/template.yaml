@@ -137,6 +137,9 @@ Resources:
             Properties:
               Queue: !GetAtt DNSUpdateQueue.Arn
               BatchSize: 10
+              FunctionResponseTypes:
+                - ReportBatchItemFailures
+              MaximumBatchingWindowInSeconds: 30
         Policies:
           - Version: '2012-10-17'
             Statement:

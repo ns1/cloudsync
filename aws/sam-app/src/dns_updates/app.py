@@ -13,6 +13,8 @@ from util import transform_dict_key
 
 soa_value_map = ['nameserver', 'hostmaster', 'serial', 'refresh', 'retry', 'expiry', 'nx_ttl']
 
+endpoint = os.environ.get('ENDPOINT')
+
 route53 = boto3.client('route53')
 
 def cast_int(val):
@@ -37,7 +39,8 @@ def build_zone(zone_info):
         response = route53.list_resource_record_sets(HostedZoneId=msg['zone_id'])
     except route53.exceptions.NoSuchHostedZone:
         print(f"zone with id {msg['zone_id']} not found")
-    
+        raise Exception
+
     msg['soa_ttl'] = None
     for record in response['ResourceRecordSets']:
         if record['Type'] == 'SOA':
@@ -46,7 +49,7 @@ def build_zone(zone_info):
             
             if len(values) != len(soa_value_map):
                 print('malformed SOA value map')
-                return
+                raise Exception
             
             msg.update(dict(zip(soa_value_map, values)))
             break
@@ -57,29 +60,21 @@ def build_zone(zone_info):
     
     if msg['soa_ttl'] is None:
         print(f"SOA record not found for zone with id {msg['zone_id']}")
-        return
+        raise Exception
     
     return msg
 
-def handler(event, context):
-    print(event)
-
-    records = event.get('Records')
-    # TODO: Return an error to trigger a CloudWatch alarm 
-    if records is None:
-        print('malformed message')
-        return
-
+def record_handler(record):
     try:
-        body = json.loads(records[0]['body'])
+        body = json.loads(record['body'])
     except json.JSONDecodeError:
         print('malformed message body from Route 53')
-        return
+        return record['messageId']
     
     detail = body.get('detail')
     if detail is None:
         print('malformed message')
-        return
+        return record['messageId']
 
     msg = {
         'event': detail['eventName'],
@@ -88,7 +83,10 @@ def handler(event, context):
     }
     
     if detail['eventName'] == 'CreateHostedZone':
-        msg.update(build_zone(detail['responseElements']['hostedZone']))
+        try:
+            msg.update(build_zone(detail['responseElements']['hostedZone']))
+        except:
+            return record['messageId']
 
     elif detail['eventName'] == 'DeleteHostedZone':
         msg['zone_id'] = detail['requestParameters']['id']
@@ -96,14 +94,6 @@ def handler(event, context):
     elif detail['eventName'] == 'ChangeResourceRecordSets':
         msg['changes'] = detail['requestParameters']['changeBatch']['changes']
         msg['zone_id'] = detail['requestParameters']['hostedZoneId']
-
-
-    # insert NS1 org id
-    # msg['org_id'] = os.environ.get('ORG_ID')
-
-    if (endpoint := os.environ.get('ENDPOINT')) and endpoint is None:
-        print("ENDPOINT env variable not set")
-        return
     
     json_msg = json.dumps({"message": msg})
     headers = {
@@ -114,6 +104,22 @@ def handler(event, context):
 
     if response.status_code != 200:
         print(f"POST to {endpoint} failed with {response.status_code}: {response.content}")
-        return
+        return record['messageId']
         
-    return msg
+    return
+
+
+def handler(event, context):
+    if endpoint is None:
+        print("ENDPOINT env variable not set")
+        # Fail the whole batch
+        return ""
+
+    print(event)
+    response = {"batchItemFailures": []}
+    for record in event.get('Records'):
+        if (failedMessageId := record_handler(record)) is not None:
+            response['batchItemFailures'].append({"itemIdentifier": failedMessageId})
+    
+    print(response)
+    return response
