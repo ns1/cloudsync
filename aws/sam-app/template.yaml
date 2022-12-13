@@ -139,7 +139,7 @@ Resources:
               BatchSize: 10
               FunctionResponseTypes:
                 - ReportBatchItemFailures
-              MaximumBatchingWindowInSeconds: 30
+              MaximumBatchingWindowInSeconds: 1
         Policies:
           - Version: '2012-10-17'
             Statement:
