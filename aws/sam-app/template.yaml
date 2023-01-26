@@ -23,35 +23,40 @@ Metadata:
     SemanticVersion: 1.0.0
     SourceCodeUrl: https://github.com/ns1/cloudsync/tree/1.0.0
 
+Parameters:
+  NS1APIKey:
+    Type: String
+    Default: ir77L4cYvsTVgKP0JWr6
+
 Resources:
 
   # A queue to hold Route 53 updates for this account.
   DNSUpdateQueue:
     Type: AWS::SQS::Queue
 
-  AlarmTopic:
-    Type: AWS::SNS::Topic
+  # AlarmTopic:
+  #   Type: AWS::SNS::Topic
 
-  QueueDepthAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmDescription: "Alarm if queue grows too large"
-      Namespace: "AWS/SQS"
-      MetricName: ApproximateNumberOfMessagesVisible
-      Dimensions:
-        - Name: QueueName
-          Value: !GetAtt DNSUpdateQueue.QueueName
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 10
-      ComparisonOperator: GreaterThanThreshold
-      AlarmActions:
-        - Ref: AlarmTopic
-      InsufficientDataActions:
-        - Ref: AlarmTopic
+  # QueueDepthAlarm:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmDescription: "Alarm if queue grows too large"
+  #     Namespace: "AWS/SQS"
+  #     MetricName: ApproximateNumberOfMessagesVisible
+  #     Dimensions:
+  #       - Name: QueueName
+  #         Value: !GetAtt DNSUpdateQueue.QueueName
+  #     Statistic: Sum
+  #     Period: 300
+  #     EvaluationPeriods: 1
+  #     Threshold: 10
+  #     ComparisonOperator: GreaterThanThreshold
+  #     AlarmActions:
+  #       - Ref: AlarmTopic
+  #     InsufficientDataActions:
+  #       - Ref: AlarmTopic
 
-  # An EventBridge rule that queues all Route 53 updates via CloudWatch.
+  # An EventBridge rule that queues all Route 53 updates from CloudTrail.
   EventRule: 
     Type: AWS::Events::Rule
     Properties: 
@@ -107,8 +112,6 @@ Resources:
               - SQS:DeleteMessage
             Resource:  !GetAtt DNSUpdateQueue.Arn
 
-  # An IAM role that allows a Lambda residing in this account
-  # to query for Route 53 record sets.
   IAMRoleForLambdaFunctionRoute53:
     Type: AWS::IAM::Role
     Properties:
@@ -125,13 +128,16 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: Route53
+        - PolicyName: CloudSyncLambdaExecRole
           PolicyDocument:
             Statement:
               - Effect: Allow
                 Action:
-                  - route53:ListResourceRecordSets
-                Resource: arn:aws:route53:::hostedzone/*
+                  - secretsmanager:GetSecretValue
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    secretsmanager:ResourceTag/APIKey: "NS1"
               - Effect: Allow
                 Action:
                   - sqs:ReceiveMessage
@@ -140,19 +146,23 @@ Resources:
                 Resource: !GetAtt DNSUpdateQueue.Arn
 
   # A Lambda residing in this account that receives updates
-  # from Route 53 via an SQS queue, and does some minimal processing
-  # before sending off to NS1.
+  # from Route 53 via an SQS queue.
   Route53toNS1Connect:
       Type: AWS::Serverless::Function
       Properties:
         CodeUri: ./src/dns_updates
         Handler: app.handler
         Runtime: python3.9
+        Architectures:
+          - x86_64
         Timeout: 10
         Role: !GetAtt IAMRoleForLambdaFunctionRoute53.Arn
         Environment:
           Variables:
             ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
+            # NS1APIKEY: ir77L4cYvsTVgKP0JWr6
+        Layers:
+          - arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
         Events:
           SQSEvent:
             Type: SQS
@@ -162,14 +172,14 @@ Resources:
               FunctionResponseTypes:
                 - ReportBatchItemFailures
               MaximumBatchingWindowInSeconds: 1
-        Policies:
-          - Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - route53:ListResourceRecordSets
-                Resource: arn:aws:route53:::hostedzone/*
-
+        # Policies:
+        #   - Version: '2012-10-17'
+        #     Statement:
+        #       - Effect: Allow
+        #         Action:
+        #           - route53:ListResourceRecordSets
+        #         Resource: arn:aws:route53:::hostedzone/*
+  
   # SnapshotFunction:
   #   Type: AWS::Serverless::Function
   #   Properties:
@@ -179,7 +189,21 @@ Resources:
   #     Architectures:
   #       - x86_64
   
-  # SnapshotCustomResource:
-  #   Type: Custom::ZoneSnapshot
+  # SnapshotSNSPermission:
+  #   Type: AWS::Lambda::Permission
   #   Properties:
-  #     ServiceToken: !GetAtt SnapshotFunction.Arn
+  #     Action: lambda:InvokeFunction
+  #     FunctionName: !Ref SnapshotFunction
+  #     Principal: sns.amazonaws.com
+  
+  # SnapshotTopic:
+  #   Type: AWS::SNS::Topic
+  #   Properties:
+  #     Subscription:
+  #       - Protocol: lambda
+  #         Endpoint: !GetAtt SnapshotFunction.Arn
+  
+  # SnapshotCustomResource:
+  #   Type: AWS::CloudFormation::CustomResource
+  #   Properties:
+  #     ServiceToken: !GetAtt SnapshotTopic.TopicArn
