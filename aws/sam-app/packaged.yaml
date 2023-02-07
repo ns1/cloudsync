@@ -1,0 +1,214 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: This serverless application publishes AWS Route 53 events to NS1 Connect.
+Globals:
+  Function:
+    Timeout: 10
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: aws-route53-ns1-connect
+    Description: This serverless application publishes AWS Route 53 events to NS1
+      Connect.
+    Author: NS1
+    SpdxLicenseId: Apache-2.0
+    LicenseUrl: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/86d3f3a95c324c9479bd8986968f4327
+    ReadmeUrl: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/df62ae21ba2d079e30d4a65dcec68b99
+    Labels:
+    - serverless
+    - NS1
+    - Route53
+    HomePageUrl: https://github.com/ns1/cloudsync
+    SemanticVersion: 1.0.0
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/1.0.0
+Parameters:
+  SecretName:
+    Type: String
+    Default: CloudSync/APIKey
+  NS1APIKey:
+    Type: String
+    Default: api_key
+  Arch:
+    Type: String
+    Default: x86_64
+Resources:
+  DNSUpdateQueue:
+    Type: AWS::SQS::Queue
+    Metadata:
+      SamResourceId: DNSUpdateQueue
+  EventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        account:
+        - Fn::Sub: ${AWS::AccountId}
+        source:
+        - aws.route53
+        detail:
+          eventSource:
+          - route53.amazonaws.com
+          eventName:
+          - CreateHostedZone
+          - DeleteHostedZone
+          - UpdateHostedZoneComment
+          - ChangeResourceRecordSets
+          errorCode:
+          - exists: false
+      Targets:
+      - Arn:
+          Fn::GetAtt:
+          - DNSUpdateQueue
+          - Arn
+        Id: SQSqueue
+    Metadata:
+      SamResourceId: EventRule
+  EventBridgeToToSqsPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+      - Ref: DNSUpdateQueue
+      PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: events.amazonaws.com
+          Action:
+          - SQS:SendMessage
+          Resource:
+            Fn::GetAtt:
+            - DNSUpdateQueue
+            - Arn
+    Metadata:
+      SamResourceId: EventBridgeToToSqsPolicy
+  IAMRoleForLambdaFunctionRoute53:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: CloudSyncLambdaExecRole
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            Resource: '*'
+            Condition:
+              StringEquals:
+                secretsmanager:ResourceTag/APIKey: NS1
+          - Effect: Allow
+            Action:
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+            Resource:
+              Fn::GetAtt:
+              - DNSUpdateQueue
+              - Arn
+    Metadata:
+      SamResourceId: IAMRoleForLambdaFunctionRoute53
+  Route53toNS1Connect:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/307ca9e606e315215fb03a7434b12fbc
+      Handler: app.handler
+      Runtime: python3.9
+      Architectures:
+      - Ref: Arch
+      Timeout: 10
+      Role:
+        Fn::GetAtt:
+        - IAMRoleForLambdaFunctionRoute53
+        - Arn
+      Environment:
+        Variables:
+          ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
+          SECRET_NAME:
+            Ref: SecretName
+          ACCOUNT_ID:
+            Ref: AWS::AccountId
+      Layers:
+      - arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue:
+              Fn::GetAtt:
+              - DNSUpdateQueue
+              - Arn
+            BatchSize: 10
+            FunctionResponseTypes:
+            - ReportBatchItemFailures
+            MaximumBatchingWindowInSeconds: 1
+    Metadata:
+      SamResourceId: Route53toNS1Connect
+  RoleForConfigureFunction:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: CloudSyncConfigFunctionRole
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - secretsmanager:CreateSecret
+            - secretsmanager:DeleteSecret
+            - secretsmanager:TagResource
+            Resource: '*'
+    Metadata:
+      SamResourceId: RoleForConfigureFunction
+  ConfigureFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/55855d5212e991e26bf4e658aa01fe2c
+      Handler: app.configure_application
+      Runtime: python3.9
+      Timeout: 15
+      Architectures:
+      - Ref: Arch
+      Role:
+        Fn::GetAtt:
+        - RoleForConfigureFunction
+        - Arn
+      Environment:
+        Variables:
+          SECRET_NAME:
+            Ref: SecretName
+          API_KEY:
+            Ref: NS1APIKey
+    Metadata:
+      SamResourceId: ConfigureFunction
+  ConfigureCustomResource:
+    Type: Custom::ConfigureFunction
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - ConfigureFunction
+        - Arn
+    Metadata:
+      SamResourceId: ConfigureCustomResource

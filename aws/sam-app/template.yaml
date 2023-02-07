@@ -17,16 +17,22 @@ Metadata:
     SpdxLicenseId: Apache-2.0
     # paths are relative to .aws-sam/build directory
     LicenseUrl: ../../LICENSE
-    ReadmeUrl: ../../README.md
+    ReadmeUrl: ./README.md
     Labels: [serverless, NS1, Route53]
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: 1.0.0
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/1.0.0
+    SemanticVersion: 0.2.0
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.2.0
 
 Parameters:
+  SecretName:
+    Type: String
+    Default: CloudSync/APIKey
   NS1APIKey:
     Type: String
-    Default: ir77L4cYvsTVgKP0JWr6
+    Default: api_key
+  Arch:
+    Type: String
+    Default: x86_64
 
 Resources:
 
@@ -96,21 +102,21 @@ Resources:
   
   # A queue policy that allows a Lambda function residing in an NS1-controlled
   # AWS account to read and delete messages from the queue.
-  NS1LambdaSqsAccessPolicy:
-    Type: AWS::SQS::QueuePolicy
-    Properties:
-      Queues:
-        - Ref: DNSUpdateQueue
-      PolicyDocument:
-        Statement:
-          - Effect: Allow
-            Principal:
-              AWS: 
-                - arn:aws:iam::249121138663:role/CloudSyncLambdaExecutionRole
-            Action: 
-              - SQS:ReceiveMessage
-              - SQS:DeleteMessage
-            Resource:  !GetAtt DNSUpdateQueue.Arn
+  # NS1LambdaSqsAccessPolicy:
+  #   Type: AWS::SQS::QueuePolicy
+  #   Properties:
+  #     Queues:
+  #       - Ref: DNSUpdateQueue
+  #     PolicyDocument:
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             AWS: 
+  #               - arn:aws:iam::249121138663:role/CloudSyncLambdaExecutionRole
+  #           Action: 
+  #             - SQS:ReceiveMessage
+  #             - SQS:DeleteMessage
+  #           Resource:  !GetAtt DNSUpdateQueue.Arn
 
   IAMRoleForLambdaFunctionRoute53:
     Type: AWS::IAM::Role
@@ -154,13 +160,14 @@ Resources:
         Handler: app.handler
         Runtime: python3.9
         Architectures:
-          - x86_64
+          - !Ref Arch
         Timeout: 10
         Role: !GetAtt IAMRoleForLambdaFunctionRoute53.Arn
         Environment:
           Variables:
             ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
-            # NS1APIKEY: ir77L4cYvsTVgKP0JWr6
+            SECRET_NAME: !Ref SecretName
+            ACCOUNT_ID: !Ref AWS::AccountId
         Layers:
           - arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
         Events:
@@ -172,13 +179,52 @@ Resources:
               FunctionResponseTypes:
                 - ReportBatchItemFailures
               MaximumBatchingWindowInSeconds: 1
-        # Policies:
-        #   - Version: '2012-10-17'
-        #     Statement:
-        #       - Effect: Allow
-        #         Action:
-        #           - route53:ListResourceRecordSets
-        #         Resource: arn:aws:route53:::hostedzone/*
+
+  RoleForConfigureFunction:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CloudSyncConfigFunctionRole
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:TagResource
+                Resource: "*"
+ 
+  ConfigureFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/configure
+      Handler: app.configure_application
+      Runtime: python3.9
+      Timeout: 15
+      Architectures:
+        - !Ref Arch
+      Role: !GetAtt RoleForConfigureFunction.Arn
+      Environment:
+        Variables:
+          SECRET_NAME: !Ref SecretName
+          API_KEY: !Ref NS1APIKey
+  
+  ConfigureCustomResource:
+    Type: Custom::ConfigureFunction
+    Properties:
+      ServiceToken: !GetAtt ConfigureFunction.Arn
   
   # SnapshotFunction:
   #   Type: AWS::Serverless::Function

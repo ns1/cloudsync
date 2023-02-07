@@ -4,7 +4,6 @@ import json
 import requests
 
 endpoint = os.environ.get('ENDPOINT')
-secret_name = 'CloudSync/APIKey'
 
 # TODO: Handle the case when the secret doesn't exist in Secrets Manager.
 def retrieve_secret(secret_id): 
@@ -33,8 +32,9 @@ def record_handler(record):
     msg = {
         'source': 'AWS-Route53',
         'version': 1,
-        'auth_key': retrieve_secret(secret_name),
-        'payload': body
+        'account_id': os.environ.get('ACCOUNT_ID'),
+        'auth_key': retrieve_secret(os.environ['SECRET_NAME']),
+        'payload': body['detail']
     }
     
     json_msg = json.dumps(msg)

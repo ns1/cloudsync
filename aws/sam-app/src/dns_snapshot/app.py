@@ -71,81 +71,93 @@ def build_zone(zone_info):
 
 def lambda_handler(event, context):
     print(event)
-    try:
-        request_type = event['RequestType']
+    # try:
+    #     request_type = event['RequestType']
 
-        if request_type == "Create":
-            msgs = list()
-            aws_account_id = context.invoked_function_arn.split(":")[4]
-            marker = None
+    #     if request_type == "Create":
+    #         msgs = list()
+    #         aws_account_id = context.invoked_function_arn.split(":")[4]
+    #         marker = None
 
-            if (endpoint := os.environ.get('ENDPOINT')) and endpoint is None:
-                print("ENDPOINT env variable not set")
-                raise Exception
+    #         if (endpoint := os.environ.get('ENDPOINT')) and endpoint is None:
+    #             print("ENDPOINT env variable not set")
+    #             raise Exception
 
-            while True:
-                kwargs = dict()
-                if marker is not None:
-                    kwargs['marker'] = marker
+    #         while True:
+    #             kwargs = dict()
+    #             if marker is not None:
+    #                 kwargs['marker'] = marker
 
-                response = route53.list_hosted_zones(**kwargs)
-                print(response)
-                zones = response['HostedZones']
+    #             response = route53.list_hosted_zones(**kwargs)
+    #             print(response)
+    #             zones = response['HostedZones']
 
-                for zone in zones:
-                    msg = {
-                        'event': 'CreateHostedZone',
-                        'time': None,
-                        'aws_account_id': aws_account_id
-                    }
-                    msg.update(build_zone(zone))
+    #             for zone in zones:
+    #                 msg = {
+    #                     'event': 'CreateHostedZone',
+    #                     'time': None,
+    #                     'aws_account_id': aws_account_id
+    #                 }
+    #                 msg.update(build_zone(zone))
 
-                    if msg['num_records'] > 2:
-                        # TODO: deal with a truncated list
-                        records = route53.list_resource_record_sets(HostedZoneId=f"/hostedzone/{msg['zone_id']}")
-                        print(records)
-                        # field names are not consistent with regard to capitalization, so lowercase the first letter
-                        # and don't include SOA records. NS1 zones already include SOA data
-                        msg['records'] = [transform_dict_key(r) for r in records['ResourceRecordSets'] if r['Type'] != 'SOA']
+    #                 if msg['num_records'] > 2:
+    #                     # TODO: deal with a truncated list
+    #                     records = route53.list_resource_record_sets(HostedZoneId=f"/hostedzone/{msg['zone_id']}")
+    #                     print(records)
+    #                     # field names are not consistent with regard to capitalization, so lowercase the first letter
+    #                     # and don't include SOA records. NS1 zones already include SOA data
+    #                     msg['records'] = [transform_dict_key(r) for r in records['ResourceRecordSets'] if r['Type'] != 'SOA']
 
-                    msgs.append(msg)
+    #                 msgs.append(msg)
                 
-                # send zones
-                payload = {
-                    "event": "ZoneSnapshot",
-                    "length": len(msgs),
-                    "zones": msgs
-                }
-                json_payload = json.dumps(payload)
-                headers = {
-                    'content-type' : 'application/json',
-                    'content-length' : str(len(json_payload))
-                }
+    #             # send zones
+    #             payload = {
+    #                 "event": "ZoneSnapshot",
+    #                 "length": len(msgs),
+    #                 "zones": msgs
+    #             }
+    #             json_payload = json.dumps(payload)
+    #             headers = {
+    #                 'content-type' : 'application/json',
+    #                 'content-length' : str(len(json_payload))
+    #             }
 
-                put_response = requests.put(endpoint, data=json_payload, headers=headers)
+    #             put_response = requests.put(endpoint, data=json_payload, headers=headers)
 
-                if put_response.status_code != 200:
-                    print(f"PUT to {endpoint} failed with {put_response.status_code}: {put_response.content}")
-                    raise Exception
+    #             if put_response.status_code != 200:
+    #                 print(f"PUT to {endpoint} failed with {put_response.status_code}: {put_response.content}")
+    #                 raise Exception
 
-                if not response['IsTruncated']:
-                    break
+    #             if not response['IsTruncated']:
+    #                 break
 
-                marker = response['NextMarker']
+    #             marker = response['NextMarker']
 
-            response_data = build_response(event, 'SUCCESS')
+    #         response_data = build_response(event, 'SUCCESS')
         
-        else:
-            # TODO: fill in for the delete action
-            response_data = build_response(event, 'SUCCESS')
+    #     else:
+    #         # TODO: fill in for the delete action
+    #         response_data = build_response(event, 'SUCCESS')
 
-    except Exception:
-        # Catch any exceptions and ensure we always return a response
-        response_data = build_response(event, 'FAILED')
+    # except Exception:
+    #     # Catch any exceptions and ensure we always return a response
+    #     response_data = build_response(event, 'FAILED')
 
-    print(response_data)
+    # print(response_data)
+
+    print(1)
+    msg = json.loads(event['Records'][0]['Sns']['Message'])
+    print(2)
+    response_data = {
+        'Status': 'SUCCESS',
+        'PhysicalResourceId': 'ns1cloudsync::{}'.format(msg['LogicalResourceId']),
+        'Data': {},
+        'RequestId': msg['RequestId'],
+        'LogicalResourceId': msg['LogicalResourceId'],
+        'StackId': msg['StackId'],
+    }
+    print(3)
     # Respond to Cloudformation to let it know we are done
-    response_url = event['ResponseURL']
-    result = requests.put(response_url, data=json.dumps(response_data))
-
+    result = requests.post(msg['ResponseURL'], data=json.dumps(response_data))
+    print(4)
     return result
