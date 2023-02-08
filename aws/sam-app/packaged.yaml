@@ -21,8 +21,8 @@ Metadata:
     - NS1
     - Route53
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.2.0'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.2.0
+    SemanticVersion: '0.2.1'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.2.1
 Parameters:
   SecretName:
     Type: String
@@ -33,6 +33,9 @@ Parameters:
   Arch:
     Type: String
     Default: x86_64
+    AllowedValues:
+    - x86_64
+    - arm64
 Resources:
   DNSUpdateQueue:
     Type: AWS::SQS::Queue
