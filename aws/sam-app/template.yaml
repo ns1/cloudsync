@@ -33,6 +33,9 @@ Parameters:
   Arch:
     Type: String
     Default: x86_64
+    AllowedValues:
+      - x86_64
+      - arm64
 
 Resources:
 
