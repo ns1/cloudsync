@@ -24,6 +24,12 @@ Metadata:
     SemanticVersion: '0.2.1'
     SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.2.1
 Parameters:
+  CloudTrailBucketName:
+    Type: String
+    Default: cloud-sync-trail-bucket
+  CloudTrailName:
+    Type: String
+    Default: CloudSyncTrail
   SecretName:
     Type: String
     Default: CloudSync/APIKey
@@ -41,6 +47,148 @@ Resources:
     Type: AWS::SQS::Queue
     Metadata:
       SamResourceId: DNSUpdateQueue
+  TrailKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Enabled: true
+      KeySpec: SYMMETRIC_DEFAULT
+      KeyUsage: ENCRYPT_DECRYPT
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: '2012-10-17'
+        Id: default-key-policy
+        Statement:
+        - Sid: Enable IAM User Permissions
+          Effect: Allow
+          Action:
+          - kms:*
+          Principal:
+            AWS:
+              Fn::Sub: arn:aws:iam::${AWS::AccountId}:root
+          Resource: '*'
+        - Sid: Allow CloudTrail to encrypt logs
+          Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action:
+          - kms:GenerateDataKey*
+          Resource: '*'
+          Condition:
+            StringEquals:
+              AWS:SourceArn:
+                Fn::Sub: arn:aws:cloudtrail:us-east-1:${AWS::AccountId}:trail/${CloudTrailName}
+            StringLike:
+              kms:EncryptionContext:aws:cloudtrail:arn:
+                Fn::Sub: arn:aws:cloudtrail:*:${AWS::AccountId}:trail/*
+        - Sid: Allow CloudTrail to describe key
+          Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action:
+          - kms:DescribeKey
+          Resource: '*'
+        - Sid: Allow principals in the account to decrypt log files
+          Effect: Allow
+          Principal:
+            AWS: '*'
+          Action:
+          - kms:Decrypt
+          - kms:ReEncryptFrom
+          Resource: '*'
+          Condition:
+            StringEquals:
+              kms:CallerAccount:
+                Fn::Sub: ${AWS::AccountId}
+            StringLike:
+              kms:EncryptionContext:aws:cloudtrail:arn:
+                Fn::Sub: arn:aws:cloudtrail:*:${AWS::AccountId}:trail/*
+        - Sid: Allow alias creation during setup
+          Effect: Allow
+          Principal:
+            AWS: '*'
+          Action:
+          - kms:CreateAlias
+          Resource: '*'
+          Condition:
+            StringEquals:
+              kms:CallerAccount:
+                Fn::Sub: ${AWS::AccountId}
+              kms:ViaService: ec2.us-east-1.amazonaws.com
+        - Sid: Enable cross account log decryption
+          Effect: Allow
+          Principal:
+            AWS: '*'
+          Action:
+          - kms:Decrypt
+          - kms:ReEncryptFrom
+          Resource: '*'
+          Condition:
+            StringEquals:
+              kms:CallerAccount:
+                Fn::Sub: ${AWS::AccountId}
+            StringLike:
+              kms:EncryptionContext:aws:cloudtrail:arn:
+                Fn::Sub: arn:aws:cloudtrail:*:${AWS::AccountId}:trail/*
+    Metadata:
+      SamResourceId: TrailKMSKey
+  TrailS3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName:
+        Ref: CloudTrailBucketName
+    Metadata:
+      SamResourceId: TrailS3Bucket
+  TrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: TrailS3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: Check ACLs
+          Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action: s3:GetBucketAcl
+          Resource:
+            Fn::GetAtt:
+            - TrailS3Bucket
+            - Arn
+          Condition:
+            StringEquals:
+              aws:SourceArn:
+                Fn::Sub: arn:aws:cloudtrail:us-east-1:${AWS::AccountId}:trail/${CloudTrailName}
+        - Sid: Write Access
+          Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action: s3:PutObject
+          Resource:
+            Fn::Sub: arn:aws:s3:::${CloudTrailBucketName}/AWSLogs/${AWS::AccountId}/*
+          Condition:
+            StringEquals:
+              s3:x-amz-acl: bucket-owner-full-control
+    Metadata:
+      SamResourceId: TrailBucketPolicy
+  Trail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: TrailBucketPolicy
+    Properties:
+      S3BucketName:
+        Ref: CloudTrailBucketName
+      IsLogging: true
+      TrailName:
+        Ref: CloudTrailName
+      IncludeGlobalServiceEvents: true
+      IsMultiRegionTrail: true
+      KMSKeyId:
+        Fn::GetAtt:
+        - TrailKMSKey
+        - Arn
+    Metadata:
+      SamResourceId: Trail
   EventRule:
     Type: AWS::Events::Rule
     Properties:
