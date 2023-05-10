@@ -20,9 +20,10 @@ Metadata:
     - serverless
     - NS1
     - Route53
+    - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.2.1'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.2.1
+    SemanticVersion: '0.3.1'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.1
 Parameters:
   CloudTrailBucketName:
     Type: String
@@ -36,17 +37,11 @@ Parameters:
   NS1APIKey:
     Type: String
     Default: api_key
-  Arch:
-    Type: String
-    Default: x86_64
-    AllowedValues:
-    - x86_64
-    - arm64
 Resources:
-  DNSUpdateQueue:
+  DeadLetterQueue:
     Type: AWS::SQS::Queue
     Metadata:
-      SamResourceId: DNSUpdateQueue
+      SamResourceId: DeadLetterQueue
   TrailKMSKey:
     Type: AWS::KMS::Key
     Properties:
@@ -210,16 +205,23 @@ Resources:
       Targets:
       - Arn:
           Fn::GetAtt:
-          - DNSUpdateQueue
+          - DNSUpdateFunction
           - Arn
-        Id: SQSqueue
+        Id: DNSUpdateFunction
+        DeadLetterConfig:
+          Arn:
+            Fn::GetAtt:
+            - DeadLetterQueue
+            - Arn
+        RetryPolicy:
+          MaximumRetryAttempts: 4
     Metadata:
       SamResourceId: EventRule
   EventBridgeToToSqsPolicy:
     Type: AWS::SQS::QueuePolicy
     Properties:
       Queues:
-      - Ref: DNSUpdateQueue
+      - Ref: DeadLetterQueue
       PolicyDocument:
         Statement:
         - Effect: Allow
@@ -229,7 +231,7 @@ Resources:
           - SQS:SendMessage
           Resource:
             Fn::GetAtt:
-            - DNSUpdateQueue
+            - DeadLetterQueue
             - Arn
     Metadata:
       SamResourceId: EventBridgeToToSqsPolicy
@@ -261,23 +263,22 @@ Resources:
                 secretsmanager:ResourceTag/APIKey: NS1
           - Effect: Allow
             Action:
-            - sqs:ReceiveMessage
-            - sqs:DeleteMessage
+            - sqs:SendMessage
             - sqs:GetQueueAttributes
             Resource:
               Fn::GetAtt:
-              - DNSUpdateQueue
+              - DeadLetterQueue
               - Arn
     Metadata:
       SamResourceId: IAMRoleForLambdaFunctionRoute53
-  Route53toNS1Connect:
+  DNSUpdateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/307ca9e606e315215fb03a7434b12fbc
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d2b2defc0902e48411a075b6d7b9a20e
       Handler: app.handler
       Runtime: python3.9
       Architectures:
-      - Ref: Arch
+      - x86_64
       Timeout: 10
       Role:
         Fn::GetAtt:
@@ -285,27 +286,23 @@ Resources:
         - Arn
       Environment:
         Variables:
-          ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
+          ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod
           SECRET_NAME:
             Ref: SecretName
           ACCOUNT_ID:
             Ref: AWS::AccountId
       Layers:
-      - arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
-      Events:
-        SQSEvent:
-          Type: SQS
-          Properties:
-            Queue:
-              Fn::GetAtt:
-              - DNSUpdateQueue
-              - Arn
-            BatchSize: 10
-            FunctionResponseTypes:
-            - ReportBatchItemFailures
-            MaximumBatchingWindowInSeconds: 1
+      - Fn::Sub: arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+      EventInvokeConfig:
+        MaximumRetryAttempts: 2
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn:
+          Fn::GetAtt:
+          - DeadLetterQueue
+          - Arn
     Metadata:
-      SamResourceId: Route53toNS1Connect
+      SamResourceId: DNSUpdateFunction
   RoleForConfigureFunction:
     Type: AWS::IAM::Role
     Properties:
@@ -331,17 +328,25 @@ Resources:
             - secretsmanager:DeleteSecret
             - secretsmanager:TagResource
             Resource: '*'
+          - Effect: Allow
+            Action:
+            - s3:ListObjects
+            - s3:DeleteObject
+            Resource:
+              Fn::GetAtt:
+              - TrailS3Bucket
+              - Arn
     Metadata:
       SamResourceId: RoleForConfigureFunction
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/55855d5212e991e26bf4e658aa01fe2c
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/8217e0f5beeca41ef56c62336ec70c47
       Handler: app.configure_application
       Runtime: python3.9
       Timeout: 15
       Architectures:
-      - Ref: Arch
+      - x86_64
       Role:
         Fn::GetAtt:
         - RoleForConfigureFunction
@@ -352,6 +357,7 @@ Resources:
             Ref: SecretName
           API_KEY:
             Ref: NS1APIKey
+          LOCK_BUCKET_NAME: SnapshotBucket
     Metadata:
       SamResourceId: ConfigureFunction
   ConfigureCustomResource:
@@ -361,5 +367,7 @@ Resources:
         Fn::GetAtt:
         - ConfigureFunction
         - Arn
+      CloudTrailBucketName:
+        Ref: CloudTrailBucketName
     Metadata:
       SamResourceId: ConfigureCustomResource
