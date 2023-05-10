@@ -39,13 +39,20 @@ def configure_application(event, context):
             )
 
         elif request_type == 'Delete':
+            # delete the API key stored in Secrets Manager
             _ = secrets_manager_client.delete_secret(
                 SecretId=os.environ['SECRET_NAME'],
                 ForceDeleteWithoutRecovery=True
             )
 
+            # empty CloudTrail bucket and remove it
+            bucket = event['ResourceProperties']['CloudTrailBucketName']
+            s3 = boto3.resource('s3')
+            bucket = s3.Bucket(bucket)
+            for obj in bucket.objects.filter():
+                s3.Object(bucket.name, obj.key).delete()
+
     except Exception as err:
-        print(err)
         # Catch any exceptions and ensure we always return a response
         response_data = build_response(event, 'FAILED', {"foo": "bar"}, reason=str(err))
     

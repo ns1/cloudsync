@@ -18,7 +18,7 @@ Metadata:
     # paths are relative to .aws-sam/build directory
     LicenseUrl: ../../LICENSE
     ReadmeUrl: ./README.md
-    Labels: [serverless, NS1, Route53]
+    Labels: [serverless, NS1, Route53, DNS]
     HomePageUrl: https://github.com/ns1/cloudsync
     SemanticVersion: 0.3.0
     SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.0
@@ -36,42 +36,12 @@ Parameters:
   NS1APIKey:
     Type: String
     Default: api_key
-  Arch:
-    Type: String
-    Default: x86_64
-    AllowedValues:
-      - x86_64
-      - arm64
 
 Resources:
-
-  # A queue to hold Route 53 updates for this account.
-  DNSUpdateQueue:
+  DeadLetterQueue:
     Type: AWS::SQS::Queue
 
-  # AlarmTopic:
-  #   Type: AWS::SNS::Topic
-
-  # QueueDepthAlarm:
-  #   Type: AWS::CloudWatch::Alarm
-  #   Properties:
-  #     AlarmDescription: "Alarm if queue grows too large"
-  #     Namespace: "AWS/SQS"
-  #     MetricName: ApproximateNumberOfMessagesVisible
-  #     Dimensions:
-  #       - Name: QueueName
-  #         Value: !GetAtt DNSUpdateQueue.QueueName
-  #     Statistic: Sum
-  #     Period: 300
-  #     EvaluationPeriods: 1
-  #     Threshold: 10
-  #     ComparisonOperator: GreaterThanThreshold
-  #     AlarmActions:
-  #       - Ref: AlarmTopic
-  #     InsufficientDataActions:
-  #       - Ref: AlarmTopic
-
-  # KMS key for CloudTrail S3 bucket
+  # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
     Type: AWS::KMS::Key
     Properties: 
@@ -147,14 +117,14 @@ Resources:
               StringLike:
                 kms:EncryptionContext:aws:cloudtrail:arn: !Sub arn:aws:cloudtrail:*:${AWS::AccountId}:trail/*
 
-  # S3 bucket for CloudTrail
+  # S3 bucket for CloudTrail.
   TrailS3Bucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
       BucketName: !Ref CloudTrailBucketName
 
-  # Bucket policy to allow CloudTrail access to the bucket
+  # Bucket policy to allow CloudTrail access to the bucket.
   TrailBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -181,7 +151,7 @@ Resources:
               StringEquals:
                 s3:x-amz-acl: bucket-owner-full-control
 
-  # There must be a trail in order for EventBridge to capture events from Route 53
+  # There must be a trail in order for EventBridge to capture events from Route 53.
   Trail:
     Type: AWS::CloudTrail::Trail
     DependsOn: TrailBucketPolicy
@@ -213,15 +183,20 @@ Resources:
           errorCode:
             - exists: false
       Targets: 
-        - Arn: !GetAtt DNSUpdateQueue.Arn
-          Id: "SQSqueue"
+        - Arn: !GetAtt DNSUpdateFunction.Arn
+          Id: "DNSUpdateFunction"
+          DeadLetterConfig:
+            Arn: !GetAtt DeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 4
+
 
   # A policy that allows the EventBridge rule to send messages to the queue.
   EventBridgeToToSqsPolicy:
     Type: AWS::SQS::QueuePolicy
     Properties:
       Queues:
-        - Ref: DNSUpdateQueue
+        - Ref: DeadLetterQueue
       PolicyDocument:
         Statement:
           - Effect: Allow
@@ -229,7 +204,7 @@ Resources:
               Service: events.amazonaws.com
             Action: 
               - SQS:SendMessage
-            Resource:  !GetAtt DNSUpdateQueue.Arn
+            Resource:  !GetAtt DeadLetterQueue.Arn
 
   IAMRoleForLambdaFunctionRoute53:
     Type: AWS::IAM::Role
@@ -259,39 +234,35 @@ Resources:
                     secretsmanager:ResourceTag/APIKey: "NS1"
               - Effect: Allow
                 Action:
-                  - sqs:ReceiveMessage
-                  - sqs:DeleteMessage
+                  - sqs:SendMessage
                   - sqs:GetQueueAttributes
-                Resource: !GetAtt DNSUpdateQueue.Arn
+                Resource: !GetAtt DeadLetterQueue.Arn
 
   # A Lambda residing in this account that receives updates
   # from Route 53 via an SQS queue.
-  Route53toNS1Connect:
+  DNSUpdateFunction:
       Type: AWS::Serverless::Function
       Properties:
         CodeUri: ./src/dns_updates
         Handler: app.handler
         Runtime: python3.9
         Architectures:
-          - !Ref Arch
+          - x86_64
         Timeout: 10
         Role: !GetAtt IAMRoleForLambdaFunctionRoute53.Arn
         Environment:
           Variables:
-            ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
+            # ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
+            ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod
             SECRET_NAME: !Ref SecretName
             ACCOUNT_ID: !Ref AWS::AccountId
         Layers:
-          - arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
-        Events:
-          SQSEvent:
-            Type: SQS
-            Properties:
-              Queue: !GetAtt DNSUpdateQueue.Arn
-              BatchSize: 10
-              FunctionResponseTypes:
-                - ReportBatchItemFailures
-              MaximumBatchingWindowInSeconds: 1
+          - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+        EventInvokeConfig:
+          MaximumRetryAttempts: 2
+        DeadLetterQueue:
+          Type: SQS
+          TargetArn: !GetAtt DeadLetterQueue.Arn 
 
   RoleForConfigureFunction:
     Type: AWS::IAM::Role
@@ -318,6 +289,11 @@ Resources:
                   - secretsmanager:DeleteSecret
                   - secretsmanager:TagResource
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:ListObjects
+                  - s3:DeleteObject
+                Resource: !GetAtt TrailS3Bucket.Arn
  
   ConfigureFunction:
     Type: AWS::Serverless::Function
@@ -327,17 +303,19 @@ Resources:
       Runtime: python3.9
       Timeout: 15
       Architectures:
-        - !Ref Arch
+        - x86_64
       Role: !GetAtt RoleForConfigureFunction.Arn
       Environment:
         Variables:
           SECRET_NAME: !Ref SecretName
           API_KEY: !Ref NS1APIKey
+          LOCK_BUCKET_NAME: SnapshotBucket
   
   ConfigureCustomResource:
     Type: Custom::ConfigureFunction
     Properties:
       ServiceToken: !GetAtt ConfigureFunction.Arn
+      CloudTrailBucketName: !Ref CloudTrailBucketName 
   
   # SnapshotFunction:
   #   Type: AWS::Serverless::Function

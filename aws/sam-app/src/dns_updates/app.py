@@ -34,6 +34,7 @@ def record_handler(record):
         'version': 1,
         'account_id': os.environ.get('ACCOUNT_ID'),
         'auth_key': retrieve_secret(os.environ['SECRET_NAME']),
+        'msg_type': 'update',
         'payload': body['detail']
     }
     
@@ -56,6 +57,8 @@ def handler(event, context):
         print("ENDPOINT env variable not set")
         # Fail the whole batch
         return ""
+
+    endpoint = f'{endpoint}/dns'
 
     print(event)
     response = {"batchItemFailures": []}
