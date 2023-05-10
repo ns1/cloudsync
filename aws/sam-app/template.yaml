@@ -20,8 +20,8 @@ Metadata:
     ReadmeUrl: ./README.md
     Labels: [serverless, NS1, Route53, DNS]
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: 0.3.2
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.2
+    SemanticVersion: 0.3.3
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.3
 
 Parameters:
   CloudTrailBucketName:
@@ -190,7 +190,6 @@ Resources:
           RetryPolicy:
             MaximumRetryAttempts: 4
 
-
   # A policy that allows the EventBridge rule to send messages to the dead-letter queue.
   EventBridgeToDLQPolicy:
     Type: AWS::SQS::QueuePolicy
@@ -237,15 +236,14 @@ Resources:
                   - sqs:SendMessage
                   - sqs:GetQueueAttributes
                 Resource: !GetAtt DeadLetterQueue.Arn
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource: !Ref DNSUpdateFunction
-                Principal:
-                  Service: events.amazonaws.com
-                Condition:
-                  ArnLike:
-                    AWS:SourceArn: !GetAtt EventRule.Arn
+
+  EventLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref DNSUpdateFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventRule.Arn
 
   # A Lambda residing in this account that receives updates from Route 53 via CloudTrail.
   DNSUpdateFunction:
