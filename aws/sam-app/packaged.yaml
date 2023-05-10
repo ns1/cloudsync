@@ -22,8 +22,8 @@ Metadata:
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.3.2'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.2
+    SemanticVersion: '0.3.3'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.3
 Parameters:
   CloudTrailBucketName:
     Type: String
@@ -269,21 +269,21 @@ Resources:
               Fn::GetAtt:
               - DeadLetterQueue
               - Arn
-          - Effect: Allow
-            Action:
-            - lambda:InvokeFunction
-            Resource:
-              Ref: DNSUpdateFunction
-            Principal:
-              Service: events.amazonaws.com
-            Condition:
-              ArnLike:
-                AWS:SourceArn:
-                  Fn::GetAtt:
-                  - EventRule
-                  - Arn
     Metadata:
       SamResourceId: IAMRoleForLambdaFunctionRoute53
+  EventLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Ref: DNSUpdateFunction
+      Principal: events.amazonaws.com
+      SourceArn:
+        Fn::GetAtt:
+        - EventRule
+        - Arn
+    Metadata:
+      SamResourceId: EventLambdaInvokePermission
   DNSUpdateFunction:
     Type: AWS::Serverless::Function
     Properties:
