@@ -22,8 +22,8 @@ Metadata:
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.3.4'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.4
+    SemanticVersion: '0.3.5'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.5
 Parameters:
   CloudTrailBucketName:
     Type: String
@@ -287,7 +287,7 @@ Resources:
   DNSUpdateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/f94dfea405f24767ef472ddbbe90d21e
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/e503f82aa2d2c6520f179aa32bc54884
       Handler: app.handler
       Runtime: python3.9
       Architectures:
@@ -354,7 +354,7 @@ Resources:
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/8217e0f5beeca41ef56c62336ec70c47
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d9a6ffeaf0b52b3d7b2f07c97f4e8656
       Handler: app.configure_application
       Runtime: python3.9
       Timeout: 15
