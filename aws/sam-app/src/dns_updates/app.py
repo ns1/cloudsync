@@ -20,7 +20,7 @@ def retrieve_secret(secret_id):
     # this key will be there unless the request fails
     return response['SecretString']
 
-def record_handler(record):
+def record_handler(endpoint, record):
     try: 
         body = json.loads(record['body'])
 
@@ -53,17 +53,20 @@ def record_handler(record):
 
 
 def handler(event, context):
+    endpoint = os.environ.get('ENDPOINT')
     if endpoint is None:
         print("ENDPOINT env variable not set")
         # Fail the whole batch
         return ""
+    
+    endpoint = f"{endpoint}/dns"
 
     endpoint = f'{endpoint}/dns'
 
     print(event)
     response = {"batchItemFailures": []}
     for record in event.get('Records'):
-        if (failedMessageId := record_handler(record)) is not None:
+        if (failedMessageId := record_handler(record, endpoint)) is not None:
             response['batchItemFailures'].append({"itemIdentifier": failedMessageId})
     
     print(response)
