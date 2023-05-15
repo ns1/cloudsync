@@ -20,7 +20,7 @@ def retrieve_secret(secret_id):
     # this key will be there unless the request fails
     return response['SecretString']
 
-def record_handler(endpoint, record):
+def record_handler(record, endpoint):
     try: 
         body = json.loads(record['body'])
 
@@ -28,6 +28,17 @@ def record_handler(endpoint, record):
         print(f"error decoding body as JSON")
         print(record['body'])
         return record['messageId']
+    
+    event_name = body['detail'].get('eventName')
+    
+    if event_name is None:
+        return record['messageId']
+
+    elif event_name in ['CreateHostedZone', 'DeleteHostedZone']:
+        zone_id = body['detail']['responseElements']['hostedZone']['id'].split('/')[-1]
+            
+    elif event_name == 'ChangeResourceRecordSets':
+        zone_id = body['detail']['requestParameters']['hostedZoneId'].split('/')[-1]
 
     msg = {
         'source': 'AWS-Route53',
@@ -35,6 +46,7 @@ def record_handler(endpoint, record):
         'account_id': os.environ.get('ACCOUNT_ID'),
         'auth_key': retrieve_secret(os.environ['SECRET_NAME']),
         'msg_type': 'update',
+        'zone_id': zone_id,
         'payload': body['detail']
     }
     
@@ -45,7 +57,9 @@ def record_handler(endpoint, record):
     }
     response = requests.post(endpoint, data=json_msg, headers=headers)
 
-    if response.status_code != 200:
+    print(json_msg)
+
+    if response.status_code != 202:
         print(f"POST to {endpoint} failed with {response.status_code}: {response.content}")
         return record['messageId']
         
@@ -53,15 +67,12 @@ def record_handler(endpoint, record):
 
 
 def handler(event, context):
-    endpoint = os.environ.get('ENDPOINT')
-    if endpoint is None:
+    if (endpoint := os.environ.get('ENDPOINT')) and endpoint is None:
         print("ENDPOINT env variable not set")
         # Fail the whole batch
         return ""
     
     endpoint = f"{endpoint}/dns"
-
-    endpoint = f'{endpoint}/dns'
 
     print(event)
     response = {"batchItemFailures": []}

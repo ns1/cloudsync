@@ -41,6 +41,9 @@ Resources:
   DeadLetterQueue:
     Type: AWS::SQS::Queue
 
+  DNSUpdateQueue:
+    Type: AWS::SQS::Queue
+
   # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
     Type: AWS::KMS::Key
@@ -183,19 +186,21 @@ Resources:
           errorCode:
             - exists: false
       Targets: 
-        - Arn: !GetAtt DNSUpdateFunction.Arn
-          Id: "DNSUpdateFunction"
-          DeadLetterConfig:
-            Arn: !GetAtt DeadLetterQueue.Arn
-          RetryPolicy:
-            MaximumRetryAttempts: 4
+        # - Arn: !GetAtt DNSUpdateFunction.Arn
+        #   Id: "DNSUpdateFunction"
+        #   DeadLetterConfig:
+        #     Arn: !GetAtt DeadLetterQueue.Arn
+        #   RetryPolicy:
+        #     MaximumRetryAttempts: 4
+        - Arn: !GetAtt DNSUpdateQueue.Arn
+          Id: DNSUpdateQueue
 
-  # A policy that allows the EventBridge rule to send messages to the dead-letter queue.
-  EventBridgeToDLQPolicy:
+  # A policy that allows the EventBridge rule to send messages to the update queue.
+  EventBridgeToUpdateQueuePolicy:
     Type: AWS::SQS::QueuePolicy
     Properties:
       Queues:
-        - Ref: DeadLetterQueue
+        - Ref: DNSUpdateQueue
       PolicyDocument:
         Statement:
           - Effect: Allow
@@ -203,7 +208,7 @@ Resources:
               Service: events.amazonaws.com
             Action: 
               - SQS:SendMessage
-            Resource:  !GetAtt DeadLetterQueue.Arn
+            Resource:  !GetAtt DNSUpdateQueue.Arn
 
   IAMRoleForLambdaFunctionRoute53:
     Type: AWS::IAM::Role
@@ -236,6 +241,12 @@ Resources:
                   - sqs:SendMessage
                   - sqs:GetQueueAttributes
                 Resource: !GetAtt DeadLetterQueue.Arn
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt DNSUpdateQueue.Arn
 
   EventLambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -268,7 +279,13 @@ Resources:
           MaximumRetryAttempts: 2
         DeadLetterQueue:
           Type: SQS
-          TargetArn: !GetAtt DeadLetterQueue.Arn 
+          TargetArn: !GetAtt DeadLetterQueue.Arn
+        Events:
+          UpdateQueueEvent:
+            Type: SQS
+            Properties:
+              Queue: !GetAtt DNSUpdateQueue.Arn
+              BatchSize: 5
 
   RoleForConfigureFunction:
     Type: AWS::IAM::Role
