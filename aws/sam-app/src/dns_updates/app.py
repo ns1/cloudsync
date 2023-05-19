@@ -34,11 +34,14 @@ def record_handler(record, endpoint):
     if event_name is None:
         return record['messageId']
 
-    elif event_name in ['CreateHostedZone', 'DeleteHostedZone']:
+    elif event_name == 'CreateHostedZone':
         zone_id = body['detail']['responseElements']['hostedZone']['id'].split('/')[-1]
             
     elif event_name == 'ChangeResourceRecordSets':
         zone_id = body['detail']['requestParameters']['hostedZoneId'].split('/')[-1]
+    
+    elif event_name == 'DeleteHostedZone':
+        zone_id = body['detail']['requestParameters']['id']
 
     msg = {
         'source': 'AWS-Route53',

@@ -186,12 +186,6 @@ Resources:
           errorCode:
             - exists: false
       Targets: 
-        # - Arn: !GetAtt DNSUpdateFunction.Arn
-        #   Id: "DNSUpdateFunction"
-        #   DeadLetterConfig:
-        #     Arn: !GetAtt DeadLetterQueue.Arn
-        #   RetryPolicy:
-        #     MaximumRetryAttempts: 4
         - Arn: !GetAtt DNSUpdateQueue.Arn
           Id: DNSUpdateQueue
 
@@ -353,6 +347,9 @@ Resources:
   #     Runtime: python3.9
   #     Architectures:
   #       - x86_64
+  #     Environment:
+  #        Variables:
+  #        PAGE_SIZE: 100
   
   # SnapshotSNSPermission:
   #   Type: AWS::Lambda::Permission
