@@ -22,12 +22,9 @@ Metadata:
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.3.6'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.6
+    SemanticVersion: '0.3.7'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.7
 Parameters:
-  CloudTrailBucketName:
-    Type: String
-    Default: cloud-sync-trail-bucket
   CloudTrailName:
     Type: String
     Default: CloudSyncTrail
@@ -135,7 +132,18 @@ Resources:
     DeletionPolicy: Delete
     Properties:
       BucketName:
-        Ref: CloudTrailBucketName
+        Fn::Join:
+        - '-'
+        - - cloudsync-trail-bucket
+          - Fn::Select:
+            - 4
+            - Fn::Split:
+              - '-'
+              - Fn::Select:
+                - 2
+                - Fn::Split:
+                  - /
+                  - Ref: AWS::StackId
     Metadata:
       SamResourceId: TrailS3Bucket
   TrailBucketPolicy:
@@ -165,7 +173,10 @@ Resources:
             Service: cloudtrail.amazonaws.com
           Action: s3:PutObject
           Resource:
-            Fn::Sub: arn:aws:s3:::${CloudTrailBucketName}/AWSLogs/${AWS::AccountId}/*
+            Fn::Sub:
+            - arn:aws:s3:::${Bucket}/AWSLogs/${AWS::AccountId}/*
+            - Bucket:
+                Ref: TrailS3Bucket
           Condition:
             StringEquals:
               s3:x-amz-acl: bucket-owner-full-control
@@ -176,7 +187,7 @@ Resources:
     DependsOn: TrailBucketPolicy
     Properties:
       S3BucketName:
-        Ref: CloudTrailBucketName
+        Ref: TrailS3Bucket
       IsLogging: true
       TrailName:
         Ref: CloudTrailName
@@ -204,6 +215,7 @@ Resources:
           - DeleteHostedZone
           - UpdateHostedZoneComment
           - ChangeResourceRecordSets
+          - ChangeTagsForResource
           errorCode:
           - exists: false
       Targets:
@@ -293,7 +305,7 @@ Resources:
   DNSUpdateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/facb9fa9e37e4062567ae426d17636de
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/366716426325ce7fb0c2f97f1af21fcc
       Handler: app.handler
       Runtime: python3.9
       Architectures:
@@ -305,7 +317,7 @@ Resources:
         - Arn
       Environment:
         Variables:
-          ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod
+          ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
           SECRET_NAME:
             Ref: SecretName
           ACCOUNT_ID:
@@ -358,8 +370,9 @@ Resources:
             Resource: '*'
           - Effect: Allow
             Action:
-            - s3:ListObjects
             - s3:DeleteObject
+            - s3:GetObject
+            - s3:ListBucket
             Resource:
               Fn::GetAtt:
               - TrailS3Bucket
@@ -368,17 +381,21 @@ Resources:
             Action:
             - s3:DeleteObject
             - s3:GetObject
+            - s3:ListBucket
             Resource:
-              Fn::Sub: arn:aws:s3:::${CloudTrailBucketName}/*
+              Fn::Sub:
+              - arn:aws:s3:::${Bucket}/*
+              - Bucket:
+                  Ref: TrailS3Bucket
     Metadata:
       SamResourceId: RoleForConfigureFunction
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/a815c0c63e7da7dd8552b1bb5d8f30ca
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/849793490cc1b3fd958a743e0f24a28d
       Handler: app.configure_application
       Runtime: python3.9
-      Timeout: 15
+      Timeout: 60
       Architectures:
       - x86_64
       Role:
@@ -402,6 +419,74 @@ Resources:
         - ConfigureFunction
         - Arn
       CloudTrailBucketName:
-        Ref: CloudTrailBucketName
+        Ref: TrailS3Bucket
     Metadata:
       SamResourceId: ConfigureCustomResource
+  SnapshotFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: SnapshotFunctionRole
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - route53:GetHostedZone
+            - route53:ListHostedZones
+            - route53:ListResourceRecordSets
+            Resource: '*'
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            Resource: '*'
+            Condition:
+              StringEquals:
+                secretsmanager:ResourceTag/APIKey: NS1
+    Metadata:
+      SamResourceId: SnapshotFunctionRole
+  SnapshotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/a55863ad5bd87672a820892c6fafd971
+      Handler: app.lambda_handler
+      Runtime: python3.9
+      Timeout: 60
+      Architectures:
+      - x86_64
+      Role:
+        Fn::GetAtt:
+        - SnapshotFunctionRole
+        - Arn
+      Layers:
+      - Fn::Sub: arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+      Environment:
+        Variables:
+          ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
+          SECRET_NAME:
+            Ref: SecretName
+          ACCOUNT_ID:
+            Ref: AWS::AccountId
+    Metadata:
+      SamResourceId: SnapshotFunction
+  SnapshotCustomResource:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - SnapshotFunction
+        - Arn
+    DependsOn: ConfigureCustomResource
+    Metadata:
+      SamResourceId: SnapshotCustomResource
