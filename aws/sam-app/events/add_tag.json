@@ -1,0 +1,44 @@
+{
+    "eventVersion": "1.08",
+    "userIdentity": {
+        "type": "Root",
+        "principalId": "773594969813",
+        "arn": "arn:aws:iam::773594969813:root",
+        "accountId": "773594969813",
+        "accessKeyId": "ASIA3IHO2O3KUO4MOTWT",
+        "sessionContext": {
+            "sessionIssuer": {},
+            "webIdFederationData": {},
+            "attributes": {
+                "creationDate": "2023-08-15T15:40:25Z",
+                "mfaAuthenticated": "true"
+            }
+        }
+    },
+    "eventTime": "2023-08-16T01:38:21Z",
+    "eventSource": "route53.amazonaws.com",
+    "eventName": "ChangeTagsForResource",
+    "awsRegion": "us-east-1",
+    "sourceIPAddress": "108.54.207.66",
+    "userAgent": "AWS Internal",
+    "requestParameters": {
+        "resourceType": "hostedzone",
+        "resourceId": "Z01912801OZLO0IQ7M2NV",
+        "addTags": [
+            {
+                "key": "CloudSync",
+                "value": ""
+            }
+        ]
+    },
+    "responseElements": null,
+    "requestID": "a1cf1609-8c49-47f9-8c6f-2a743fcd0ab1",
+    "eventID": "b5549641-109a-406f-997a-ae1fdb07e547",
+    "readOnly": false,
+    "eventType": "AwsApiCall",
+    "apiVersion": "2013-04-01",
+    "managementEvent": true,
+    "recipientAccountId": "773594969813",
+    "eventCategory": "Management",
+    "sessionCredentialFromConsole": "true"
+}

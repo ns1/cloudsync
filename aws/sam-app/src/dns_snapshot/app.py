@@ -44,11 +44,15 @@ def snapshot_zone(zone, aws_account_id, endpoint):
             'MaxItems': str(MAX_PAGE_SIZE)
         }
 
+        print(kwargs)
+
         if marker is not None:
             kwargs.update(marker)
 
         response = route53.list_resource_record_sets(**kwargs)
         page_counter += 1
+
+        zone_id = zone['Id'].split('/', 2)[-1]
 
         msg = {
             'source': 'AWS-Route53',
@@ -59,7 +63,7 @@ def snapshot_zone(zone, aws_account_id, endpoint):
             'page': page_counter,
             'truncated': response['IsTruncated'],
             'num_records': len(response['ResourceRecordSets']),
-            'zone_id': zone['Id'],
+            'zone_id': zone_id,
             'zone_name': zone['Name'],
             'payload': response['ResourceRecordSets']
         }
@@ -70,10 +74,12 @@ def snapshot_zone(zone, aws_account_id, endpoint):
             'content-length' : str(len(json_payload))
         }
 
-        put_response = requests.put(endpoint, data=json_payload, headers=headers)
+        print(json_payload)
 
-        if put_response.status_code != 200:
-            logger.error(f"PUT to {endpoint} failed with {put_response.status_code}: {put_response.content}")
+        post_response = requests.post(endpoint, data=json_payload, headers=headers)
+
+        if post_response.status_code != 202:
+            logger.error(f"POST to {endpoint} failed with {post_response.status_code}: {post_response.content}")
             raise Exception
 
         if not response['IsTruncated']:
@@ -88,14 +94,13 @@ def snapshot_zone(zone, aws_account_id, endpoint):
 
 @helper.create
 def create(event, context):
+    # TODO: Is the account id not specified directly?
     aws_account_id = context.invoked_function_arn.split(":")[4]
     marker = None
 
-    if endpoint is None:
+    if (endpoint := os.environ.get('ENDPOINT')) is None:
         logger.error("ENDPOINT env variable not set")
         raise Exception
-
-    endpoint = f"{endpoint}/dns"
 
     while True:
         kwargs = dict()

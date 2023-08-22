@@ -1,0 +1,12 @@
+{
+  "RequestType": "Create",
+  "ServiceToken": "arn:aws:lambda:us-east-1:773594969813:function:cloudsync-SnapshotFunction-qu0j2ACo0TbH",
+  "ResponseURL": "http://localhost",
+  "StackId": "arn:aws:cloudformation:us-east-1:773594969813:stack/cloudsync/809e7ee0-3de5-11ee-a04b-121f61a75449",
+  "RequestId": "fae10949-dc6b-44d3-a9ac-ccee45d8f488",
+  "LogicalResourceId": "CustomResource",
+  "ResourceType": "Custom::MyCustomResourceTypeName",
+  "ResourceProperties": {
+      "ServiceToken": "arn:aws:lambda:us-east-1:773594969813:function:cloudsync-SnapshotFunction-qu0j2ACo0TbH"
+  }
+}

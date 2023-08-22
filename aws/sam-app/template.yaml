@@ -24,9 +24,6 @@ Metadata:
     SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.6
 
 Parameters:
-  CloudTrailBucketName:
-    Type: String
-    Default: cloud-sync-trail-bucket
   CloudTrailName:
     Type: String
     Default: CloudSyncTrail
@@ -125,7 +122,7 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Ref CloudTrailBucketName
+      BucketName: !Join ['-', ['cloudsync-trail-bucket', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
 
   # Bucket policy to allow CloudTrail access to the bucket.
   TrailBucketPolicy:
@@ -149,7 +146,9 @@ Resources:
             Principal:
               Service: cloudtrail.amazonaws.com
             Action: s3:PutObject
-            Resource: !Sub arn:aws:s3:::${CloudTrailBucketName}/AWSLogs/${AWS::AccountId}/*
+            Resource: !Sub 
+              - arn:aws:s3:::${Bucket}/AWSLogs/${AWS::AccountId}/*
+              - Bucket: !Ref TrailS3Bucket
             Condition:
               StringEquals:
                 s3:x-amz-acl: bucket-owner-full-control
@@ -159,7 +158,7 @@ Resources:
     Type: AWS::CloudTrail::Trail
     DependsOn: TrailBucketPolicy
     Properties:
-      S3BucketName: !Ref CloudTrailBucketName
+      S3BucketName: !Ref TrailS3Bucket
       IsLogging: true
       TrailName: !Ref CloudTrailName
       IncludeGlobalServiceEvents: true
@@ -183,6 +182,7 @@ Resources:
             - DeleteHostedZone
             - UpdateHostedZoneComment
             - ChangeResourceRecordSets
+            - ChangeTagsForResource
           errorCode:
             - exists: false
       Targets: 
@@ -264,7 +264,7 @@ Resources:
         Environment:
           Variables:
             # ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
-            ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod
+            ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
             SECRET_NAME: !Ref SecretName
             ACCOUNT_ID: !Ref AWS::AccountId
         Layers:
@@ -308,14 +308,18 @@ Resources:
                 Resource: "*"
               - Effect: Allow
                 Action:
-                  - s3:ListObjects
                   - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:ListBucket
                 Resource: !GetAtt TrailS3Bucket.Arn
               - Effect: Allow
                 Action:
                   - s3:DeleteObject
                   - s3:GetObject
-                Resource: !Sub arn:aws:s3:::${CloudTrailBucketName}/*
+                  - s3:ListBucket
+                Resource: !Sub 
+                  - arn:aws:s3:::${Bucket}/*
+                  - Bucket: !Ref TrailS3Bucket
  
   ConfigureFunction:
     Type: AWS::Serverless::Function
@@ -323,7 +327,7 @@ Resources:
       CodeUri: src/configure
       Handler: app.configure_application
       Runtime: python3.9
-      Timeout: 15
+      Timeout: 60
       Architectures:
         - x86_64
       Role: !GetAtt RoleForConfigureFunction.Arn
@@ -337,35 +341,62 @@ Resources:
     Type: Custom::ConfigureFunction
     Properties:
       ServiceToken: !GetAtt ConfigureFunction.Arn
-      CloudTrailBucketName: !Ref CloudTrailBucketName 
+      CloudTrailBucketName: !Ref TrailS3Bucket
   
-  # SnapshotFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     CodeUri: ./src/dns_snapshot
-  #     Handler: app.lambda_handler
-  #     Runtime: python3.9
-  #     Architectures:
-  #       - x86_64
-  #     Environment:
-  #        Variables:
-  #        PAGE_SIZE: 100
+  SnapshotFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SnapshotFunctionRole
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:GetHostedZone
+                  - route53:ListHostedZones
+                  - route53:ListResourceRecordSets
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    secretsmanager:ResourceTag/APIKey: "NS1"
   
-  # SnapshotSNSPermission:
-  #   Type: AWS::Lambda::Permission
-  #   Properties:
-  #     Action: lambda:InvokeFunction
-  #     FunctionName: !Ref SnapshotFunction
-  #     Principal: sns.amazonaws.com
+  SnapshotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src/dns_snapshot
+      Handler: app.lambda_handler
+      Runtime: python3.9
+      Timeout: 60
+      Architectures:
+        - x86_64
+      Role: !GetAtt SnapshotFunctionRole.Arn
+      Layers:
+        - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+      Environment:
+          Variables:
+            # ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
+            ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
+            SECRET_NAME: !Ref SecretName
+            ACCOUNT_ID: !Ref AWS::AccountId
   
-  # SnapshotTopic:
-  #   Type: AWS::SNS::Topic
-  #   Properties:
-  #     Subscription:
-  #       - Protocol: lambda
-  #         Endpoint: !GetAtt SnapshotFunction.Arn
-  
-  # SnapshotCustomResource:
-  #   Type: AWS::CloudFormation::CustomResource
-  #   Properties:
-  #     ServiceToken: !GetAtt SnapshotTopic.TopicArn
+  SnapshotCustomResource:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt SnapshotFunction.Arn
+    DependsOn: ConfigureCustomResource
