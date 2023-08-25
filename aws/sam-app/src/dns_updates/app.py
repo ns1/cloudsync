@@ -3,7 +3,13 @@ import json
 
 import requests
 
+import boto3
+
 endpoint = os.environ.get('ENDPOINT')
+zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
+zone_omit_tag = os.environ.get('ZONE_OMIT_TAG', 'CloudSync')
+
+r53_client = boto3.client('route53')
 
 # TODO: Handle the case when the secret doesn't exist in Secrets Manager.
 def retrieve_secret(secret_id): 
@@ -42,6 +48,20 @@ def record_handler(record, endpoint):
     
     elif event_name == 'DeleteHostedZone':
         zone_id = body['detail']['requestParameters']['id']
+
+    if zone_omit_enabled:
+        tags = r53_client.list_tags_for_resource(
+            ResourceType='hostedzone',
+            ResourceId=zone_id,
+        )
+
+        tags = tags['ResourceTagSet'].get('Tags')
+        if tags is None:
+            return record['messageId']        
+        
+        if zone_omit_tag not in [t['Key'] for t in tags]:
+            # skip zone
+            return
 
     msg = {
         'source': 'AWS-Route53',

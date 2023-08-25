@@ -27,6 +27,16 @@ Parameters:
   CloudTrailName:
     Type: String
     Default: CloudSyncTrail
+  EnableZoneOmission:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Indicate whether you would like to be able to omit certain zones from syncing. Enabled by default.
+  ZoneOmissionTag:
+    Type: String
+    Default: CloudSync
+    MaxLength: 128
+    Description: The tag that will indicate which zones are omitted from syncing.
   SecretName:
     Type: String
     Default: CloudSync/APIKey
@@ -204,7 +214,7 @@ Resources:
               - SQS:SendMessage
             Resource:  !GetAtt DNSUpdateQueue.Arn
 
-  IAMRoleForLambdaFunctionRoute53:
+  DNSUpdateFunctionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -241,6 +251,10 @@ Resources:
                   - sqs:DeleteMessage
                   - sqs:GetQueueAttributes
                 Resource: !GetAtt DNSUpdateQueue.Arn
+              - Effect: Allow
+                Action:
+                  - route53:ListTagsForResource
+                Resource: "*"
 
   EventLambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -260,13 +274,15 @@ Resources:
         Architectures:
           - x86_64
         Timeout: 10
-        Role: !GetAtt IAMRoleForLambdaFunctionRoute53.Arn
+        Role: !GetAtt DNSUpdateFunctionRole.Arn
         Environment:
           Variables:
             # ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
             ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
             SECRET_NAME: !Ref SecretName
             ACCOUNT_ID: !Ref AWS::AccountId
+            ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
+            ZONE_OMIT_TAG: !Ref ZoneOmissionTag
         Layers:
           - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
         EventInvokeConfig:
@@ -281,7 +297,7 @@ Resources:
               Queue: !GetAtt DNSUpdateQueue.Arn
               BatchSize: 5
 
-  RoleForConfigureFunction:
+  ConfigureFunctionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -330,7 +346,7 @@ Resources:
       Timeout: 60
       Architectures:
         - x86_64
-      Role: !GetAtt RoleForConfigureFunction.Arn
+      Role: !GetAtt ConfigureFunctionRole.Arn
       Environment:
         Variables:
           SECRET_NAME: !Ref SecretName
@@ -367,6 +383,7 @@ Resources:
                   - route53:GetHostedZone
                   - route53:ListHostedZones
                   - route53:ListResourceRecordSets
+                  - route53:ListTagsForResources
                 Resource: "*"
               - Effect: Allow
                 Action:
@@ -394,6 +411,8 @@ Resources:
             ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
             SECRET_NAME: !Ref SecretName
             ACCOUNT_ID: !Ref AWS::AccountId
+            ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
+            ZONE_OMIT_TAG: !Ref ZoneOmissionTag
   
   SnapshotCustomResource:
     Type: AWS::CloudFormation::CustomResource

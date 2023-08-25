@@ -14,6 +14,8 @@ MAX_PAGE_SIZE = 100 # in terms of records
 try:
     route53 = boto3.client('route53')
     endpoint = os.environ.get('ENDPOINT')
+    zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
+    zone_omit_tag = os.environ.get('ZONE_OMIT_TAG', 'CloudSync')
 
 except Exception as e:
     helper.init_failure(e)
@@ -34,17 +36,15 @@ def retrieve_secret(secret_id):
     return response['SecretString']
 
 
-def snapshot_zone(zone, aws_account_id, endpoint):
+def snapshot_zone(zone, aws_account_id, endpoint, tags):
     page_counter = 0
     marker = None
 
     while True:
         kwargs = {
-            'HostedZoneId': f"/hostedzone/{zone['Id']}",
+            'HostedZoneId': zone['Id'],
             'MaxItems': str(MAX_PAGE_SIZE)
         }
-
-        print(kwargs)
 
         if marker is not None:
             kwargs.update(marker)
@@ -74,8 +74,6 @@ def snapshot_zone(zone, aws_account_id, endpoint):
             'content-length' : str(len(json_payload))
         }
 
-        print(json_payload)
-
         post_response = requests.post(endpoint, data=json_payload, headers=headers)
 
         if post_response.status_code != 202:
@@ -94,6 +92,8 @@ def snapshot_zone(zone, aws_account_id, endpoint):
 
 @helper.create
 def create(event, context):
+    print(event)
+
     # TODO: Is the account id not specified directly?
     aws_account_id = context.invoked_function_arn.split(":")[4]
     marker = None
@@ -107,15 +107,30 @@ def create(event, context):
         if marker is not None:
             kwargs['Marker'] = marker
 
-        response = route53.list_hosted_zones(**kwargs)
+        zones_response = route53.list_hosted_zones(**kwargs)
 
-        for zone in response['HostedZones']:
-            snapshot_zone(zone, aws_account_id, endpoint)
+        tags_response = route53.list_tags_for_resources(
+            ResourceType='hostedzone',
+            ResourceIds=[z['Id'].split('/')[-1] for z in zones_response['HostedZones']],
+        )
 
-        if not response['IsTruncated']:
+        tags = dict()
+        for tag_set in tags_response['ResourceTagSets']:
+            tags[tag_set['ResourceId']] = {t['Key']: t['Value'] for t in tag_set['Tags']}
+        
+        for zone in zones_response['HostedZones']:
+            zone_id = zone['Id'].split('/')[-1]
+            zone_tags = tags[zone_id]
+
+            if zone_omit_enabled and zone_omit_tag not in zone_tags:
+                continue
+
+            snapshot_zone(zone, aws_account_id, endpoint, tags)
+
+        if not zones_response['IsTruncated']:
             break
 
-        marker = response['NextMarker']
+        marker = zones_response['NextMarker']
 
 
 def lambda_handler(event, context):
