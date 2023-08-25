@@ -270,7 +270,7 @@ Resources:
       Properties:
         CodeUri: ./src/dns_updates
         Handler: app.handler
-        Runtime: python3.9
+        Runtime: python3.11
         Architectures:
           - x86_64
         Timeout: 10
@@ -342,7 +342,7 @@ Resources:
     Properties:
       CodeUri: src/configure
       Handler: app.configure_application
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       Architectures:
         - x86_64
@@ -398,7 +398,7 @@ Resources:
     Properties:
       CodeUri: ./src/dns_snapshot
       Handler: app.lambda_handler
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       Architectures:
         - x86_64
