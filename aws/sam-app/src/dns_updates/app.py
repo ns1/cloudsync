@@ -2,29 +2,15 @@ import os
 import json
 
 import requests
-
 import boto3
+
+from common import retrieve_secret, snapshot_zone
 
 endpoint = os.environ.get('ENDPOINT')
 zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
 zone_omit_tag = os.environ.get('ZONE_OMIT_TAG', 'CloudSync')
 
-r53_client = boto3.client('route53')
-
-# TODO: Handle the case when the secret doesn't exist in Secrets Manager.
-def retrieve_secret(secret_id): 
-    url = f'http://localhost:2773/secretsmanager/get?secretId={secret_id}'
-    headers = { "X-Aws-Parameters-Secrets-Token": os.environ.get('AWS_SESSION_TOKEN') }
-    response = requests.get(url, headers=headers)
-
-    # will raise an exception if not 200
-    response.raise_for_status()
-    response = response.json()
-
-    print(response)
-
-    # this key will be there unless the request fails
-    return response['SecretString']
+route53_client = boto3.client('route53')
 
 def record_handler(record, endpoint):
     try: 
@@ -37,28 +23,47 @@ def record_handler(record, endpoint):
     
     event_name = body['detail'].get('eventName')
     
-    if event_name is None:
-        return record['messageId']
+    match event_name:
+        case None:
+            return record['messageId']
+        
+        case 'CreateHostedZone':
+            zone_id = body['detail']['responseElements']['hostedZone']['id'].split('/')[-1]
+        
+        case 'ChangeResourceRecordSets':
+            zone_id = body['detail']['requestParameters']['hostedZoneId'].split('/')[-1]
+        
+        case 'DeleteHostedZone':
+            zone_id = body['detail']['requestParameters']['id']
 
-    elif event_name == 'CreateHostedZone':
-        zone_id = body['detail']['responseElements']['hostedZone']['id'].split('/')[-1]
-            
-    elif event_name == 'ChangeResourceRecordSets':
-        zone_id = body['detail']['requestParameters']['hostedZoneId'].split('/')[-1]
-    
-    elif event_name == 'DeleteHostedZone':
-        zone_id = body['detail']['requestParameters']['id']
+        case 'ChangeTagsForResource':
+            zone_id = body['detail']['requestParameters']['resourceId']
+
+    account_id = os.environ.get('ACCOUNT_ID')
+
+    # TODO: Make zone name optional, because updates don't need it.
+    r = route53_client.get_hosted_zone(Id=zone_id)
+    zone_name = r['HostedZone']['Name']
+
+    tags = route53_client.list_tags_for_resource(
+        ResourceType='hostedzone',
+        ResourceId=zone_id,
+    )
+
+    tags = tags['ResourceTagSet'].get('Tags', [])
+    print(tags)
 
     if zone_omit_enabled:
-        tags = r53_client.list_tags_for_resource(
-            ResourceType='hostedzone',
-            ResourceId=zone_id,
-        )
+        # check whether the zone_omit tag was added
+        if event_name == 'ChangeTagsForResource':
+            new_tags = body['detail']['requestParameters'].get('addTags', [])
 
-        tags = tags['ResourceTagSet'].get('Tags')
-        if tags is None:
-            return record['messageId']        
-        
+            if zone_omit_tag in [t['key'] for t in new_tags]:
+                # the zone_omit tag has been added to the zone 
+                print("snapshotting")
+                snapshot_zone(route53_client, zone_id, zone_name, account_id, endpoint, tags)
+                return
+
         if zone_omit_tag not in [t['Key'] for t in tags]:
             # skip zone
             return
@@ -66,11 +71,11 @@ def record_handler(record, endpoint):
     msg = {
         'source': 'AWS-Route53',
         'version': 1,
-        'account_id': os.environ.get('ACCOUNT_ID'),
+        'account_id': account_id,
         'auth_key': retrieve_secret(os.environ['SECRET_NAME']),
         'msg_type': 'update',
         'zone_id': zone_id,
-        'zone_name': "foo",
+        'zone_name': zone_name,
         'page': 1,
         'truncated': False,
         'payload': body['detail']

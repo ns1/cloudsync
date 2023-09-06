@@ -214,6 +214,18 @@ Resources:
               - SQS:SendMessage
             Resource:  !GetAtt DNSUpdateQueue.Arn
 
+  SharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: SharedLayer
+      Description: Common functions
+      ContentUri: ./src/shared_layer
+      CompatibleRuntimes:
+        - python3.11
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.11
+  
   DNSUpdateFunctionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -253,6 +265,13 @@ Resources:
                 Resource: !GetAtt DNSUpdateQueue.Arn
               - Effect: Allow
                 Action:
+                  - route53:GetHostedZone
+                  - route53:ListHostedZones
+                  - route53:ListResourceRecordSets
+                  - route53:ListTagsForResources
+                Resource: "*"
+              - Effect: Allow
+                Action:
                   - route53:ListTagsForResource
                 Resource: "*"
 
@@ -285,6 +304,7 @@ Resources:
             ZONE_OMIT_TAG: !Ref ZoneOmissionTag
         Layers:
           - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+          - !Ref SharedLayer
         EventInvokeConfig:
           MaximumRetryAttempts: 2
         DeadLetterQueue:
@@ -405,6 +425,7 @@ Resources:
       Role: !GetAtt SnapshotFunctionRole.Arn
       Layers:
         - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+        - !Ref SharedLayer
       Environment:
           Variables:
             # ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
