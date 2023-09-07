@@ -22,12 +22,25 @@ Metadata:
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.3.7'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.7
+    SemanticVersion: '0.3.8'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.8
 Parameters:
   CloudTrailName:
     Type: String
     Default: CloudSyncTrail
+  EnableZoneOmission:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+    - 'true'
+    - 'false'
+    Description: Indicate whether you would like to be able to omit certain zones
+      from syncing. Enabled by default.
+  ZoneOmissionTag:
+    Type: String
+    Default: CloudSync
+    MaxLength: 128
+    Description: The tag that will indicate which zones are omitted from syncing.
   SecretName:
     Type: String
     Default: CloudSync/APIKey
@@ -244,7 +257,19 @@ Resources:
             - Arn
     Metadata:
       SamResourceId: EventBridgeToUpdateQueuePolicy
-  IAMRoleForLambdaFunctionRoute53:
+  SharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: SharedLayer
+      Description: Common functions
+      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/7b0221508323198edcff97f612484757
+      CompatibleRuntimes:
+      - python3.11
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.11
+      SamResourceId: SharedLayer
+  DNSUpdateFunctionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -287,8 +312,19 @@ Resources:
               Fn::GetAtt:
               - DNSUpdateQueue
               - Arn
+          - Effect: Allow
+            Action:
+            - route53:GetHostedZone
+            - route53:ListHostedZones
+            - route53:ListResourceRecordSets
+            - route53:ListTagsForResources
+            Resource: '*'
+          - Effect: Allow
+            Action:
+            - route53:ListTagsForResource
+            Resource: '*'
     Metadata:
-      SamResourceId: IAMRoleForLambdaFunctionRoute53
+      SamResourceId: DNSUpdateFunctionRole
   EventLambdaInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -305,15 +341,15 @@ Resources:
   DNSUpdateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/366716426325ce7fb0c2f97f1af21fcc
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6db0a080cee444738dba682d7d703722
       Handler: app.handler
-      Runtime: python3.9
+      Runtime: python3.11
       Architectures:
       - x86_64
       Timeout: 10
       Role:
         Fn::GetAtt:
-        - IAMRoleForLambdaFunctionRoute53
+        - DNSUpdateFunctionRole
         - Arn
       Environment:
         Variables:
@@ -322,8 +358,13 @@ Resources:
             Ref: SecretName
           ACCOUNT_ID:
             Ref: AWS::AccountId
+          ENABLE_ZONE_OMIT:
+            Ref: EnableZoneOmission
+          ZONE_OMIT_TAG:
+            Ref: ZoneOmissionTag
       Layers:
       - Fn::Sub: arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+      - Ref: SharedLayer
       EventInvokeConfig:
         MaximumRetryAttempts: 2
       DeadLetterQueue:
@@ -343,7 +384,7 @@ Resources:
             BatchSize: 5
     Metadata:
       SamResourceId: DNSUpdateFunction
-  RoleForConfigureFunction:
+  ConfigureFunctionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -388,19 +429,19 @@ Resources:
               - Bucket:
                   Ref: TrailS3Bucket
     Metadata:
-      SamResourceId: RoleForConfigureFunction
+      SamResourceId: ConfigureFunctionRole
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/849793490cc1b3fd958a743e0f24a28d
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/889f4933fd004b1cf429e12c25543d0a
       Handler: app.configure_application
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       Architectures:
       - x86_64
       Role:
         Fn::GetAtt:
-        - RoleForConfigureFunction
+        - ConfigureFunctionRole
         - Arn
       Environment:
         Variables:
@@ -446,6 +487,7 @@ Resources:
             - route53:GetHostedZone
             - route53:ListHostedZones
             - route53:ListResourceRecordSets
+            - route53:ListTagsForResources
             Resource: '*'
           - Effect: Allow
             Action:
@@ -459,9 +501,9 @@ Resources:
   SnapshotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/a55863ad5bd87672a820892c6fafd971
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/00bd8e3a9acab61c0fa4f8a00b3bb2f9
       Handler: app.lambda_handler
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       Architectures:
       - x86_64
@@ -471,6 +513,7 @@ Resources:
         - Arn
       Layers:
       - Fn::Sub: arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+      - Ref: SharedLayer
       Environment:
         Variables:
           ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
@@ -478,6 +521,10 @@ Resources:
             Ref: SecretName
           ACCOUNT_ID:
             Ref: AWS::AccountId
+          ENABLE_ZONE_OMIT:
+            Ref: EnableZoneOmission
+          ZONE_OMIT_TAG:
+            Ref: ZoneOmissionTag
     Metadata:
       SamResourceId: SnapshotFunction
   SnapshotCustomResource:
