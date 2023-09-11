@@ -59,7 +59,9 @@ def record_handler(record, endpoint):
             new_tags = body['detail']['requestParameters'].get('addTags', [])
 
             if zone_omit_tag in [t['key'] for t in new_tags]:
-                # the zone_omit tag has been added to the zone 
+                # the zone_omit tag may have been added. in fact, all tags show up here
+                # regardless of whether they were just added, so we'll have to snapshot
+                # in case the tag was just added. 
                 print("snapshotting")
                 snapshot_zone(route53_client, zone_id, zone_name, account_id, endpoint, tags)
                 return

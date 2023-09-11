@@ -4,15 +4,18 @@ import os
 
 import requests
 
-def get_tags_for_zones(route53_client, zone_ids: List[str]) -> dict:
-    tags_response = route53_client.list_tags_for_resources(
-        ResourceType='hostedzone',
-        ResourceIds=zone_ids,
-    )
 
+def get_tags_for_zones(route53_client, zone_ids: List[str]) -> dict:
     tags = dict()
-    for tag_set in tags_response['ResourceTagSets']:
-        tags[tag_set['ResourceId']] = {t['Key']: t['Value'] for t in tag_set['Tags']}
+
+    for chunk in (zone_ids[i:i+10] for i in range(0, len(zone_ids), 10)):
+        tags_response = route53_client.list_tags_for_resources(
+            ResourceType='hostedzone',
+            ResourceIds=chunk,
+        )
+
+        for tag_set in tags_response['ResourceTagSets']:
+            tags[tag_set['ResourceId']] = {t['Key']: t['Value'] for t in tag_set['Tags']}
     
     return tags
 
@@ -46,7 +49,11 @@ def snapshot_zone(route53_client, zone_id, zone_name, aws_account_id, endpoint, 
             'num_records': len(response['ResourceRecordSets']),
             'zone_id': zone_id,
             'zone_name': zone_name,
-            'payload': response['ResourceRecordSets']
+            'payload': {
+                'resource_record_sets': response['ResourceRecordSets'],
+                'tags': tags
+            }
+            
         }
         
         json_payload = json.dumps(msg)

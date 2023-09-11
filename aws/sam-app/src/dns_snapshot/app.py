@@ -1,12 +1,10 @@
 import os
-import logging
 
 from common import get_tags_for_zones, snapshot_zone
 
 import boto3
 from crhelper import CfnResource
 
-logger = logging.getLogger(__name__)
 helper = CfnResource(json_logging=False, log_level='DEBUG', boto_level='CRITICAL', sleep_on_delete=120, ssl_verify=None)
 
 MAX_PAGE_SIZE = 100 # in terms of records
@@ -25,12 +23,11 @@ except Exception as e:
 def create(event, context):
     print(event)
 
-    # TODO: Is the account id not specified directly?
     aws_account_id = context.invoked_function_arn.split(":")[4]
     marker = None
 
     if (endpoint := os.environ.get('ENDPOINT')) is None:
-        logger.error("ENDPOINT env variable not set")
+        print("ENDPOINT env variable not set")
         raise Exception
 
     while True:
