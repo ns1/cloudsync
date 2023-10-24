@@ -21,6 +21,15 @@ def record_handler(record, endpoint):
         print(record['body'])
         return record['messageId']
     
+    account_id = os.environ.get('ACCOUNT_ID')
+
+    # discard changes made by CloudSync-outbound
+    user_identity_arn = body['detail']['userIdentity']['arn']
+    cloudsync_arn = f"arn:aws:sts::{account_id}:assumed-role/NS1_CloudSync_Role/cloudsync-{account_id}"
+    
+    if user_identity_arn == cloudsync_arn:
+        return
+    
     event_name = body['detail'].get('eventName')
     
     match event_name:
@@ -38,8 +47,6 @@ def record_handler(record, endpoint):
 
         case 'ChangeTagsForResource':
             zone_id = body['detail']['requestParameters']['resourceId']
-
-    account_id = os.environ.get('ACCOUNT_ID')
 
     # TODO: Make zone name optional, because updates don't need it.
     r = route53_client.get_hosted_zone(Id=zone_id)
