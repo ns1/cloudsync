@@ -28,6 +28,7 @@ def record_handler(record, endpoint):
     cloudsync_arn = f"arn:aws:sts::{account_id}:assumed-role/NS1_CloudSync_Role/cloudsync-{account_id}"
     
     if user_identity_arn == cloudsync_arn:
+        print("skipping updates from CloudSync-outbound")
         return
     
     event_name = body['detail'].get('eventName')
@@ -48,17 +49,21 @@ def record_handler(record, endpoint):
         case 'ChangeTagsForResource':
             zone_id = body['detail']['requestParameters']['resourceId']
 
+
+    tags = []
+    if event_name != 'DeleteHostedZone':
     # TODO: Make zone name optional, because updates don't need it.
-    r = route53_client.get_hosted_zone(Id=zone_id)
-    zone_name = r['HostedZone']['Name']
+    # TODO: Why not pull the zone name from the payload for zone create?
+        r = route53_client.get_hosted_zone(Id=zone_id)
+        zone_name = r['HostedZone']['Name']
 
-    tags = route53_client.list_tags_for_resource(
-        ResourceType='hostedzone',
-        ResourceId=zone_id,
-    )
+        tags = route53_client.list_tags_for_resource(
+            ResourceType='hostedzone',
+            ResourceId=zone_id,
+        )
 
-    tags = tags['ResourceTagSet'].get('Tags', [])
-    print(tags)
+        tags = tags['ResourceTagSet'].get('Tags', [])
+        print(tags)
 
     if zone_omit_enabled:
         # check whether the zone_omit tag was added
@@ -83,7 +88,7 @@ def record_handler(record, endpoint):
         'account_id': account_id,
         'auth_key': retrieve_secret(os.environ['SECRET_NAME']),
         'msg_type': 'update',
-        'zone_id': zone_id,
+        # 'zone_id': zone_id,
         'zone_name': zone_name,
         'page': 1,
         'truncated': False,

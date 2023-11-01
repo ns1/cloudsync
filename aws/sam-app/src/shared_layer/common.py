@@ -47,7 +47,7 @@ def snapshot_zone(route53_client, zone_id, zone_name, aws_account_id, endpoint, 
             'page': page_counter,
             'truncated': response['IsTruncated'],
             'num_records': len(response['ResourceRecordSets']),
-            'zone_id': zone_id,
+            # 'zone_id': zone_id,
             'zone_name': zone_name,
             'payload': {
                 'resource_record_sets': response['ResourceRecordSets'],
