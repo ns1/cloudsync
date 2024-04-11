@@ -193,6 +193,9 @@ Resources:
             - UpdateHostedZoneComment
             - ChangeResourceRecordSets
             - ChangeTagsForResource
+            - CreateHealthCheck
+            - DeleteHealthCheck
+            - UpdateHealthCheck
           errorCode:
             - exists: false
       Targets: 
