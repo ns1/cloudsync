@@ -20,62 +20,61 @@ def get_tags_for_zones(route53_client, zone_ids: List[str]) -> dict:
     return tags
 
 
-MAX_PAGE_SIZE = 100 # in terms of records
+MAX_PAGE_SIZE = 300 # in terms of records
 
-def snapshot_zone(route53_client, zone_id, zone_name, aws_account_id, endpoint, tags, max_page_size=MAX_PAGE_SIZE):
+def snapshot_zone(route53_client, zone_id, zone_name, aws_account_id, endpoint, tags, max_page_size=MAX_PAGE_SIZE, marker=None):
     page_counter = 0
-    marker = None
 
-    while True:
-        kwargs = {
-            'HostedZoneId': f"hostedzone/{zone_id}",
-            'MaxItems': str(max_page_size)
-        }
+    kwargs = {
+        'HostedZoneId': f"hostedzone/{zone_id}",
+        'MaxItems': str(max_page_size)
+    }
 
-        if marker is not None:
-            kwargs.update(marker)
+    if marker is not None:
+        kwargs.update(marker)
 
-        response = route53_client.list_resource_record_sets(**kwargs)
-        page_counter += 1
+    response = route53_client.list_resource_record_sets(**kwargs)
+    page_counter += 1
 
-        msg = {
-            'source': 'AWS-Route53',
-            'version': 1,
-            'account_id': aws_account_id,
-            'auth_key': retrieve_secret(os.environ['SECRET_NAME']),
-            'msg_type': 'snapshot',
-            'page': page_counter,
-            'truncated': response['IsTruncated'],
-            'num_records': len(response['ResourceRecordSets']),
-            # 'zone_id': zone_id,
-            'zone_name': zone_name,
-            'payload': {
-                'resource_record_sets': response['ResourceRecordSets'],
-                'tags': tags
-            }
-            
+    msg = {
+        'source': 'AWS-Route53',
+        'version': 1,
+        'account_id': aws_account_id,
+        'auth_key': 'zC9RREfprnS202ITcoFO',
+        'msg_type': 'snapshot',
+        'page': page_counter,
+        'truncated': response['IsTruncated'],
+        'num_records': len(response['ResourceRecordSets']),
+        # 'zone_id': zone_id,
+        'zone_name': zone_name,
+        'payload': {
+            'resource_record_sets': response['ResourceRecordSets'],
+            'tags': tags
         }
         
-        json_payload = json.dumps(msg)
-        headers = {
-            'content-type' : 'application/json',
-            'content-length' : str(len(json_payload))
-        }
+    }
+    
+    json_payload = json.dumps(msg)
+    headers = {
+        'content-type' : 'application/json',
+        'content-length' : str(len(json_payload))
+    }
 
-        post_response = requests.post(endpoint, data=json_payload, headers=headers)
+    post_response = requests.post(endpoint, data=json_payload, headers=headers)
 
-        if post_response.status_code != 202:
-            print(f"POST to {endpoint} failed with {post_response.status_code}: {post_response.content}")
-            raise Exception
+    if post_response.status_code != 202:
+        print(f"POST to {endpoint} failed with {post_response.status_code}: {post_response.content}")
+        raise Exception
 
-        if not response['IsTruncated']:
-            break
+    ans = {}
+    if response['IsTruncated']:
+        ans['StartRecordName'] = response['NextRecordName']
+        ans['StartRecordType'] = response['NextRecordType']
+        if 'NextRecordIdentifier' in response:
+            ans['StartRecordIdentifier'] = response['NextRecordIdentifier']
+    ans['IsTruncated'] = response['IsTruncated']
 
-        marker = {
-            'StartRecordName': response['NextRecordName'],
-            'StartRecordType': response['NextRecordType'],
-            'StartRecordIdentifier': response['NextRecordIdentifier']
-        }
+    return ans
 
 # TODO: Handle the case when the secret doesn't exist in Secrets Manager.
 def retrieve_secret(secret_id): 

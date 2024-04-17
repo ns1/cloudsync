@@ -1,0 +1,43 @@
+---
+Comment: Snapshot Iterator
+StartAt: List hosted zones
+States:
+  List hosted zones:
+    Type: Task
+    Resource: arn:aws:states:::lambda:invoke
+    OutputPath: "$.Payload"
+    Parameters:
+      Payload.$: "$"
+      FunctionName: arn:aws:lambda:us-east-1:249121138663:function:SnapshotListFunction:$LATEST
+    Retry:
+    - ErrorEquals:
+      - Lambda.ServiceException
+      - Lambda.AWSLambdaException
+      - Lambda.SdkClientException
+      - Lambda.TooManyRequestsException
+      IntervalSeconds: 1
+      MaxAttempts: 3
+      BackoffRate: 2
+    Next: zone snapshot
+  zone snapshot:
+    Type: Task
+    Resource: arn:aws:lambda:us-east-1:249121138663:function:SnapshotFunction
+    ResultPath: "$.iterator"
+    Next: isTruncated
+  isTruncated:
+    Type: Choice
+    Choices:
+    - Or:
+      - Variable: "$.iterator.IsTruncated"
+        BooleanEquals: true
+      - Variable: "$.iterator.current_zone_index"
+        NumericLessThanPath: "$.iterator.zones_count"
+      Next: Wait
+    Default: Done
+  Wait:
+    Type: Wait
+    Seconds: 1
+    Next: zone snapshot
+  Done:
+    Type: Pass
+    End: true
