@@ -228,10 +228,10 @@ Resources:
       Description: Common functions
       ContentUri: ./src/shared_layer
       CompatibleRuntimes:
-        - python3.9
+        - python3.11
       RetentionPolicy: Delete
     Metadata:
-      BuildMethod: python3.9
+      BuildMethod: python3.11
   
   DNSUpdateFunctionRole:
     Type: AWS::IAM::Role
@@ -297,7 +297,7 @@ Resources:
         FunctionName: DNSUpdateFunction
         CodeUri: ./src/dns_updates
         Handler: app.handler
-        Runtime: python3.9
+        Runtime: python3.11
         Timeout: 10
         Role: !GetAtt DNSUpdateFunctionRole.Arn
         Environment:
@@ -369,7 +369,7 @@ Resources:
       FunctionName: ConfigureFunction
       CodeUri: src/configure
       Handler: app.configure_application
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       Role: !GetAtt ConfigureFunctionRole.Arn
       Environment:
@@ -425,7 +425,7 @@ Resources:
       FunctionName: SnapshotFunction
       CodeUri: ./src/dns_snapshot
       Handler: app.lambda_handler
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       Role: !GetAtt SnapshotFunctionRole.Arn
       Layers:
@@ -447,7 +447,7 @@ Resources:
       FunctionName: SnapshotListFunction
       CodeUri: ./src/dns_snapshot_list
       Handler: app.lambda_handler
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       Policies:
         - Version: "2012-10-17"
@@ -503,7 +503,7 @@ Resources:
       FunctionName: TriggerStateMachineFunction
       CodeUri: ./src/trigger_state_machine
       Handler: app.lambda_handler
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       Policies:
         - Version: "2012-10-17"
@@ -515,7 +515,7 @@ Resources:
         Variables:
           STATE_MACHINE_ARN: !GetAtt SnapshotStateMachine.Arn
 
-  TriggerSnapshotCR:
+  TriggerSnapshotCRRR:
     Type: AWS::CloudFormation::CustomResource
     Properties:
       ServiceToken: !GetAtt TriggerStateMachineFunction.Arn

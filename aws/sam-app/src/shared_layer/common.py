@@ -20,7 +20,7 @@ def get_tags_for_zones(route53_client, zone_ids: List[str]) -> dict:
     return tags
 
 
-MAX_PAGE_SIZE = 300 # in terms of records
+MAX_PAGE_SIZE = 100 # in terms of records
 
 def snapshot_zone(route53_client, zone_id, zone_name, aws_account_id, endpoint, tags, max_page_size=MAX_PAGE_SIZE, marker=None):
     page_counter = 0
@@ -40,7 +40,7 @@ def snapshot_zone(route53_client, zone_id, zone_name, aws_account_id, endpoint, 
         'source': 'AWS-Route53',
         'version': 1,
         'account_id': aws_account_id,
-        'auth_key': 'zC9RREfprnS202ITcoFO',
+        'auth_key': retrieve_secret(os.environ['SECRET_NAME']),
         'msg_type': 'snapshot',
         'page': page_counter,
         'truncated': response['IsTruncated'],
