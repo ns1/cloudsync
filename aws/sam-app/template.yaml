@@ -47,9 +47,13 @@ Parameters:
 Resources:
   DeadLetterQueue:
     Type: AWS::SQS::Queue
+    Properties:
+      QueueName: Route53_Snapshot_DLQ
 
   DNSUpdateQueue:
     Type: AWS::SQS::Queue
+    Properties:
+      QueueName: Route53_Snapshot
 
   # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
@@ -290,11 +294,10 @@ Resources:
   DNSUpdateFunction:
       Type: AWS::Serverless::Function
       Properties:
+        FunctionName: DNSUpdateFunction
         CodeUri: ./src/dns_updates
         Handler: app.handler
         Runtime: python3.11
-        Architectures:
-          - x86_64
         Timeout: 10
         Role: !GetAtt DNSUpdateFunctionRole.Arn
         Environment:
@@ -363,12 +366,11 @@ Resources:
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: ConfigureFunction
       CodeUri: src/configure
       Handler: app.configure_application
       Runtime: python3.11
       Timeout: 60
-      Architectures:
-        - x86_64
       Role: !GetAtt ConfigureFunctionRole.Arn
       Environment:
         Variables:
@@ -385,6 +387,7 @@ Resources:
   SnapshotFunctionRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: SnapshotFunctionRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -419,12 +422,11 @@ Resources:
   SnapshotFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: SnapshotFunction
       CodeUri: ./src/dns_snapshot
       Handler: app.lambda_handler
       Runtime: python3.11
       Timeout: 60
-      Architectures:
-        - x86_64
       Role: !GetAtt SnapshotFunctionRole.Arn
       Layers:
         - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
@@ -432,14 +434,89 @@ Resources:
       Environment:
           Variables:
             # ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
-            ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
+            ENDPOINT: https://c48g634625.execute-api.us-east-1.amazonaws.com/dev/dns
             SECRET_NAME: !Ref SecretName
             ACCOUNT_ID: !Ref AWS::AccountId
             ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
             ZONE_OMIT_TAG: !Ref ZoneOmissionTag
   
-  SnapshotCustomResource:
+
+  SnapshotListFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SnapshotListFunction
+      CodeUri: ./src/dns_snapshot_list
+      Handler: app.lambda_handler
+      Runtime: python3.11
+      Timeout: 60
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+               - route53:ListHostedZones
+               - route53:ListTagsForResources
+              Resource: "*"
+      Layers:
+        - !Ref SharedLayer
+
+  SnapshotStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SnapshotStateMachineRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SnapshotInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt SnapshotFunction.Arn
+                  - !GetAtt SnapshotListFunction.Arn
+                  - !Sub ${SnapshotFunction.Arn}:*
+                  - !Sub ${SnapshotListFunction.Arn}:*
+                  
+  SnapshotStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: Snapshot-Route53
+      RoleArn: !GetAtt SnapshotStateMachineRole.Arn
+      Definition: 
+        'Fn::Transform':
+          Name: AWS::Include
+          Parameters:
+            Location: state_machine_def.yaml
+
+  TriggerStateMachineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: TriggerStateMachineFunction
+      CodeUri: ./src/trigger_state_machine
+      Handler: app.lambda_handler
+      Runtime: python3.11
+      Timeout: 60
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action: states:StartExecution
+              Resource: !GetAtt SnapshotStateMachine.Arn
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !GetAtt SnapshotStateMachine.Arn
+
+  TriggerSnapshotCR:
     Type: AWS::CloudFormation::CustomResource
     Properties:
-      ServiceToken: !GetAtt SnapshotFunction.Arn
-    DependsOn: ConfigureCustomResource
+      ServiceToken: !GetAtt TriggerStateMachineFunction.Arn
+    DependsOn: SnapshotStateMachine
