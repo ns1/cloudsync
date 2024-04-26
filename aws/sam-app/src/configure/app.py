@@ -37,11 +37,49 @@ def configure_application(event, context):
                     }
                 ]
             )
+            # token_api = os.environ['TOKEN_API_ENDPOINT']
+            token_api = "http://api.nszero.com/cloudsync/v1beta1/token"
+            headers = {
+                'x-nsone-key': os.environ['API_KEY']
+            }
+
+            tokens = requests.post(token_api, headers=headers)
+            _ = secrets_manager_client.create_secret(
+                Name='ACCESS_TOKEN',
+                SecretString=tokens['access_token'],
+                Tags=[
+                    {
+                        'Key': 'AccessToken',
+                        'Value': 'access_token'
+                    }
+                ]
+            )
+
+            _ = secrets_manager_client.create_secret(
+                Name='REFRESH_TOKEN',
+                SecretString=tokens['refresh_token'],
+                Tags=[
+                    {
+                        'Key': 'RefreshToken',
+                        'Value': 'refresh_token'
+                    }
+                ]
+            )
 
         elif request_type == 'Delete':
             # delete the API key stored in Secrets Manager
             _ = secrets_manager_client.delete_secret(
                 SecretId=os.environ['SECRET_NAME'],
+                ForceDeleteWithoutRecovery=True
+            )
+
+            _ = secrets_manager_client.delete_secret(
+                SecretId='ACCESS_TOKEN',
+                ForceDeleteWithoutRecovery=True
+            )
+
+            _ = secrets_manager_client.delete_secret(
+                SecretId='REFRESH_TOKEN',
                 ForceDeleteWithoutRecovery=True
             )
 

@@ -48,12 +48,12 @@ Resources:
   DeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: Route53_Snapshot_DLQ
+      QueueName: m1-Route53_Snapshot_DLQ
 
   DNSUpdateQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: Route53_Snapshot
+      QueueName: m1-Route53_Snapshot
 
   # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
@@ -224,7 +224,7 @@ Resources:
   SharedLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: SharedLayer
+      LayerName: m1-SharedLayer
       Description: Common functions
       ContentUri: ./src/shared_layer
       CompatibleRuntimes:
@@ -249,7 +249,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: CloudSyncLambdaExecRole
+        - PolicyName: m1-CloudSyncLambdaExecRole
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -294,7 +294,7 @@ Resources:
   DNSUpdateFunction:
       Type: AWS::Serverless::Function
       Properties:
-        FunctionName: DNSUpdateFunction
+        FunctionName: m1-DNSUpdateFunction
         CodeUri: ./src/dns_updates
         Handler: app.handler
         Runtime: python3.11
@@ -339,7 +339,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: CloudSyncConfigFunctionRole
+        - PolicyName: m1-CloudSyncConfigFunctionRole
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -366,7 +366,7 @@ Resources:
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: ConfigureFunction
+      FunctionName: m1-ConfigureFunction
       CodeUri: src/configure
       Handler: app.configure_application
       Runtime: python3.11
@@ -387,7 +387,7 @@ Resources:
   SnapshotFunctionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: SnapshotFunctionRole
+      RoleName: m1-SnapshotFunctionRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -401,7 +401,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: SnapshotFunctionRole
+        - PolicyName: m1-SnapshotFunctionRole
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -422,7 +422,7 @@ Resources:
   SnapshotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: SnapshotFunction
+      FunctionName: m1-SnapshotFunction
       CodeUri: ./src/dns_snapshot
       Handler: app.lambda_handler
       Runtime: python3.11
@@ -444,7 +444,7 @@ Resources:
   SnapshotListFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: SnapshotListFunction
+      FunctionName: m1-SnapshotListFunction
       CodeUri: ./src/dns_snapshot_list
       Handler: app.lambda_handler
       Runtime: python3.11
@@ -463,7 +463,7 @@ Resources:
   SnapshotStateMachineRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: SnapshotStateMachineRole
+      RoleName: m1-SnapshotStateMachineRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -474,7 +474,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: SnapshotInvokePolicy
+        - PolicyName: m1-SnapshotInvokePolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -489,7 +489,7 @@ Resources:
   SnapshotStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      StateMachineName: Snapshot-Route53
+      StateMachineName: m1-Snapshot-Route53
       RoleArn: !GetAtt SnapshotStateMachineRole.Arn
       Definition: 
         'Fn::Transform':
@@ -500,7 +500,7 @@ Resources:
   TriggerStateMachineFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: TriggerStateMachineFunction
+      FunctionName: m1-TriggerStateMachineFunction
       CodeUri: ./src/trigger_state_machine
       Handler: app.lambda_handler
       Runtime: python3.11

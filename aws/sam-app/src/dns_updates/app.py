@@ -147,9 +147,11 @@ def handle_zones_and_records(zone_id, record):
 
 def send_message(msg, message_id):
     json_msg = json.dumps(msg)
+    # auth_header = 'Bearer ' + retrieve_secret('ACCESS_TOKEN')
     headers = {
         'content-type' : 'application/json',
         'content-length' : str(len(json_msg))
+        # 'Authorization': auth_header
     }
     response = requests.post(endpoint, data=json_msg, headers=headers)
 

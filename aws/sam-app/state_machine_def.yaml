@@ -8,7 +8,7 @@ States:
     OutputPath: "$.Payload"
     Parameters:
       Payload.$: "$"
-      FunctionName: arn:aws:lambda:us-east-1:249121138663:function:SnapshotListFunction:$LATEST
+      FunctionName: arn:aws:lambda:us-east-1:249121138663:function:m1-SnapshotListFunction:$LATEST
     Retry:
     - ErrorEquals:
       - Lambda.ServiceException
@@ -21,7 +21,7 @@ States:
     Next: zone snapshot
   zone snapshot:
     Type: Task
-    Resource: arn:aws:lambda:us-east-1:249121138663:function:SnapshotFunction
+    Resource: arn:aws:lambda:us-east-1:249121138663:function:m1-SnapshotFunction
     ResultPath: "$.iterator"
     Next: isTruncated
   isTruncated:
