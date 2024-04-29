@@ -439,6 +439,7 @@ Resources:
             ACCOUNT_ID: !Ref AWS::AccountId
             ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
             ZONE_OMIT_TAG: !Ref ZoneOmissionTag
+            DESTINATION: s3
   
 
   SnapshotListFunction:

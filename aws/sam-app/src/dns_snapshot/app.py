@@ -8,6 +8,7 @@ def lambda_handler(event, context):
     endpoint = os.environ.get('ENDPOINT')
     zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
     zone_omit_tag = os.environ.get('ZONE_OMIT_TAG', 'CloudSync')
+    snapshotDest = os.environ.get('DESTINATION') or "ns1"
 
     if (endpoint := os.environ.get('ENDPOINT')) is None:
         print("ENDPOINT env variable not set")
@@ -37,7 +38,7 @@ def lambda_handler(event, context):
     if zone_omit_enabled and zone_omit_tag in current_zone_tags:
         return {}
     
-    out = snapshot_zone(route53_client, current_zone_id, current_zone['Name'], aws_account_id, endpoint, current_zone_tags, marker=marker)
+    out = snapshot_zone(route53_client, current_zone_id, current_zone['Name'], aws_account_id, endpoint, current_zone_tags, snapshotDest, marker=marker)
 
     # update iterator
     out['hosted_zones'] = event['hosted_zones']
