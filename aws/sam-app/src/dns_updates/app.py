@@ -123,7 +123,8 @@ def handle_zones_and_records(zone_id, record):
                     # regardless of whether they were just added, so we'll have to snapshot
                     # in case the tag was just added. 
                     print("snapshotting")
-                    snapshot_zone(route53_client, zone_id, zone_name, account_id, endpoint, tags)
+                    #TODO: tweak snapshot call here
+                    # snapshot_zone(route53_client, zone_id, zone_name, account_id, endpoint, tags)
                     return
 
             if zone_omit_tag not in [t['Key'] for t in tags]:

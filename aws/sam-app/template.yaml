@@ -43,6 +43,22 @@ Parameters:
   NS1APIKey:
     Type: String
     Default: api_key
+  SyncDest:
+    Type: String
+    Default: s3
+    Description: The sync destination for cloudsync.
+  SyncBucket:
+    Type: String
+    Default: "cloudsync-outbound-endpoint"
+    Description: The sync s3 bucket when SyncDest is set to 's3'.
+  CloudSyncAPIKey:
+    Type: String
+    Default: 9a7b2f8c-6d5e-4a13-bc68-3cfe1d024a9e
+    Description: Non NS1 API Key for cloud sync.
+  GatewayEndpoint:
+    Type: String
+    Default: https://api.nszero.com/cloudsync/v1beta1
+    Description: Cloud sync gateway endpoint.
 
 Resources:
   DeadLetterQueue:
@@ -303,7 +319,7 @@ Resources:
         Environment:
           Variables:
             # ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
-            ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
+            ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns # AWS gateway
             SECRET_NAME: !Ref SecretName
             ACCOUNT_ID: !Ref AWS::AccountId
             ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
@@ -345,9 +361,18 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:CreateSecret
+                  - secretsmanager:UpdateSecret
                   - secretsmanager:DeleteSecret
                   - secretsmanager:TagResource
-                Resource: "*"
+                Resource: 
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey-*'
+              - Effect: Allow
+                Action: cloudformation:DescribeStackResources
+                Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*'
+              - Effect: Allow
+                Action: logs:DeleteLogGroup
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/cloudsync*'
               - Effect: Allow
                 Action:
                   - s3:DeleteObject
@@ -372,11 +397,13 @@ Resources:
       Runtime: python3.11
       Timeout: 60
       Role: !GetAtt ConfigureFunctionRole.Arn
+      Layers:
+        - !Ref SharedLayer
       Environment:
         Variables:
-          SECRET_NAME: !Ref SecretName
-          API_KEY: !Ref NS1APIKey
-          LOCK_BUCKET_NAME: SnapshotBucket
+          NS1_API_KEY: !Ref NS1APIKey
+          CLOUD_SYNC_API_KEY: !Ref CloudSyncAPIKey
+          STACK_NAME: !Ref "AWS::StackName" 
   
   ConfigureCustomResource:
     Type: Custom::ConfigureFunction
@@ -414,10 +441,17 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: "*"
-                Condition:
-                  StringEquals:
-                    secretsmanager:ResourceTag/APIKey: "NS1"
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey-*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:UpdateSecret
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/RefreshToken-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/AccessToken-*'
   
   SnapshotFunction:
     Type: AWS::Serverless::Function
@@ -433,14 +467,11 @@ Resources:
         - !Ref SharedLayer
       Environment:
           Variables:
-            # ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
-            ENDPOINT: https://c48g634625.execute-api.us-east-1.amazonaws.com/dev/dns
-            SECRET_NAME: !Ref SecretName
-            ACCOUNT_ID: !Ref AWS::AccountId
+            ENDPOINT: !Ref GatewayEndpoint
             ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
             ZONE_OMIT_TAG: !Ref ZoneOmissionTag
-            DESTINATION: s3
-  
+            SYNC_DEST: !Ref SyncDest
+            SYNC_BUCKET: !Ref SyncBucket
 
   SnapshotListFunction:
     Type: AWS::Serverless::Function
