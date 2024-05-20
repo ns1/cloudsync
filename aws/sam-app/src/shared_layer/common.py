@@ -5,6 +5,7 @@ import boto3
 import jwt
 from datetime import datetime
 import requests
+import functools
 
 secrets_manager_client = boto3.client('secretsmanager')
 
@@ -136,6 +137,7 @@ def snapshot_zone(route53_client, zone_id, zone_name, endpoint, tags, dest, s3_b
     return ans
 
 def insert_token(func):
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         endpoint, _, headers, secret_handler = args
 
