@@ -8,7 +8,7 @@ def lambda_handler(event, context):
     zones_response = route53_client.list_hosted_zones()
 
     if zones_response['ResponseMetadata']['HTTPStatusCode'] != 200:
-        print(f"list_hosted_zones failed with status code: {zones_response['ResponseMetadata']['HTTPStatusCode']}. {response}")
+        print(f"list_hosted_zones failed with status code: {zones_response['ResponseMetadata']['HTTPStatusCode']}. {zones_response}")
         raise Exception
 
 
