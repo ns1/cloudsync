@@ -6,6 +6,8 @@ import jwt
 from datetime import datetime
 import requests
 import functools
+from itertools import permutations
+from string import ascii_lowercase
 
 secrets_manager_client = boto3.client('secretsmanager')
 
@@ -82,7 +84,20 @@ CS_API_KEY_NAME = 'CloudSync/CloudSyncAPIKey'
 ACCESS_TOKEN_NAME = 'CloudSync/AccessToken'
 REFRESH_TOKEN_NAME = 'CloudSync/RefreshToken'
 
-def snapshot_zone(route53_client, zone_id, zone_name, endpoint, tags, dest, s3_bucket_name, secret_handler, max_page_size=MAX_PAGE_SIZE, marker=None):
+string_generator = (''.join(perm) for perm in permutations(ascii_lowercase, r=4))
+
+def snapshot_zone(
+    route53_client, 
+    zone_id, 
+    zone_name, 
+    endpoint, 
+    tags, 
+    dest, 
+    s3_bucket_name, 
+    secret_handler, 
+    max_page_size=MAX_PAGE_SIZE, 
+    marker=None
+):
     page_counter = 0
 
     kwargs = {
@@ -104,7 +119,7 @@ def snapshot_zone(route53_client, zone_id, zone_name, endpoint, tags, dest, s3_b
         'msg_type': 'snapshot',
         'page': page_counter,
         'truncated': response['IsTruncated'],
-        'request_id': zone_id, # TODO: what value to use for fifo de-duplication?!
+        'request_id': f'{int(datetime.now().timestamp())}-{next(string_generator)}',
         'num_records': len(response['ResourceRecordSets']),
         'zone_id': zone_id,
         'zone_name': zone_name,
@@ -112,7 +127,6 @@ def snapshot_zone(route53_client, zone_id, zone_name, endpoint, tags, dest, s3_b
             'resource_record_sets': response['ResourceRecordSets'],
             'tags': tags
         }
-        
     }
     
     json_payload = json.dumps(msg)
