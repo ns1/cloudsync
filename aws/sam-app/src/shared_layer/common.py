@@ -84,8 +84,6 @@ CS_API_KEY_NAME = 'CloudSync/CloudSyncAPIKey'
 ACCESS_TOKEN_NAME = 'CloudSync/AccessToken'
 REFRESH_TOKEN_NAME = 'CloudSync/RefreshToken'
 
-string_generator = (''.join(perm) for perm in permutations(ascii_lowercase, r=4))
-
 def snapshot_zone(
     route53_client, 
     zone_id, 
@@ -119,7 +117,6 @@ def snapshot_zone(
         'msg_type': 'snapshot',
         'page': page_counter,
         'truncated': response['IsTruncated'],
-        'request_id': f'{int(datetime.now().timestamp())}-{next(string_generator)}',
         'num_records': len(response['ResourceRecordSets']),
         'zone_id': zone_id,
         'zone_name': zone_name,
