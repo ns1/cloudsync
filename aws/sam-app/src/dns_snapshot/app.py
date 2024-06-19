@@ -37,7 +37,7 @@ def lambda_handler(event, context):
             marker['StartRecordIdentifier'] = event['iterator'].get('StartRecordIdentifier', "")
 
 
-    if zone_omit_enabled and zone_omit_tag in current_zone_tags:
+    if current_zone_tags[current_zone_id].get('ENABLE_ZONE_OMIT', '').lower() and current_zone_tags[current_zone_id].get('ZONE_OMIT_TAG', '').lower() == 'cloudsync':
         return {}
     
     out = snapshot_zone(
