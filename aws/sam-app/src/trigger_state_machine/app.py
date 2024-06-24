@@ -19,8 +19,7 @@ def create(event, context):
     )
 
     if response['ResponseMetadata']['HTTPStatusCode'] != 200:
-        print(
-            f"State machine trigger failed with status code: {response['ResponseMetadata']['HTTPStatusCode']}. {response}")
+        print(f"State machine trigger failed with status code: {response['ResponseMetadata']['HTTPStatusCode']}. {response}")
         raise Exception("Failed to start execution")
 
 
