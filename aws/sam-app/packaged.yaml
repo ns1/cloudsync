@@ -22,8 +22,8 @@ Metadata:
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.3.8'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.3.8
+    SemanticVersion: '0.4.0'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.0
 Parameters:
   CloudTrailName:
     Type: String
@@ -47,13 +47,33 @@ Parameters:
   NS1APIKey:
     Type: String
     Default: api_key
+  SyncDest:
+    Type: String
+    Default: s3
+    Description: The sync destination for cloudsync.
+  SyncBucket:
+    Type: String
+    Default: cloudsync-outbound-endpoint
+    Description: The sync s3 bucket when SyncDest is set to 's3'.
+  CloudSyncAPIKey:
+    Type: String
+    Default: 9a7b2f8c-6d5e-4a13-bc68-3cfe1d024a9e
+    Description: Non NS1 API Key for cloud sync.
+  GatewayEndpoint:
+    Type: String
+    Default: https://api.nszero.com/cloudsync/v1beta1
+    Description: Cloud sync gateway endpoint.
 Resources:
   DeadLetterQueue:
     Type: AWS::SQS::Queue
+    Properties:
+      QueueName: Route53_Snapshot_DLQ
     Metadata:
       SamResourceId: DeadLetterQueue
   DNSUpdateQueue:
     Type: AWS::SQS::Queue
+    Properties:
+      QueueName: Route53_Snapshot
     Metadata:
       SamResourceId: DNSUpdateQueue
   TrailKMSKey:
@@ -229,6 +249,9 @@ Resources:
           - UpdateHostedZoneComment
           - ChangeResourceRecordSets
           - ChangeTagsForResource
+          - CreateHealthCheck
+          - DeleteHealthCheck
+          - UpdateHealthCheck
           errorCode:
           - exists: false
       Targets:
@@ -262,7 +285,7 @@ Resources:
     Properties:
       LayerName: SharedLayer
       Description: Common functions
-      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/7b0221508323198edcff97f612484757
+      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/42c7338a3935db3ed7b6c167d62343e0
       CompatibleRuntimes:
       - python3.11
       RetentionPolicy: Delete
@@ -341,11 +364,10 @@ Resources:
   DNSUpdateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6db0a080cee444738dba682d7d703722
+      FunctionName: DNSUpdateFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/34bc2dd9768be0fd142b6cf18f41ca2f
       Handler: app.handler
       Runtime: python3.11
-      Architectures:
-      - x86_64
       Timeout: 10
       Role:
         Fn::GetAtt:
@@ -406,9 +428,20 @@ Resources:
           - Effect: Allow
             Action:
             - secretsmanager:CreateSecret
+            - secretsmanager:UpdateSecret
             - secretsmanager:DeleteSecret
             - secretsmanager:TagResource
-            Resource: '*'
+            Resource:
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey-*
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey-*
+          - Effect: Allow
+            Action: cloudformation:DescribeStackResources
+            Resource:
+              Fn::Sub: arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*
+          - Effect: Allow
+            Action: logs:DeleteLogGroup
+            Resource:
+              Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/cloudsync*
           - Effect: Allow
             Action:
             - s3:DeleteObject
@@ -433,23 +466,25 @@ Resources:
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/889f4933fd004b1cf429e12c25543d0a
+      FunctionName: ConfigureFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d3a9c5f637dfc10ad7c346707e9f6371
       Handler: app.configure_application
       Runtime: python3.11
       Timeout: 60
-      Architectures:
-      - x86_64
       Role:
         Fn::GetAtt:
         - ConfigureFunctionRole
         - Arn
+      Layers:
+      - Ref: SharedLayer
       Environment:
         Variables:
-          SECRET_NAME:
-            Ref: SecretName
-          API_KEY:
+          NS1_API_KEY:
             Ref: NS1APIKey
-          LOCK_BUCKET_NAME: SnapshotBucket
+          CLOUD_SYNC_API_KEY:
+            Ref: CloudSyncAPIKey
+          STACK_NAME:
+            Ref: AWS::StackName
     Metadata:
       SamResourceId: ConfigureFunction
   ConfigureCustomResource:
@@ -466,6 +501,7 @@ Resources:
   SnapshotFunctionRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: SnapshotFunctionRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -492,21 +528,27 @@ Resources:
           - Effect: Allow
             Action:
             - secretsmanager:GetSecretValue
-            Resource: '*'
-            Condition:
-              StringEquals:
-                secretsmanager:ResourceTag/APIKey: NS1
+            Resource:
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey-*
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey-*
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            - secretsmanager:CreateSecret
+            - secretsmanager:UpdateSecret
+            Resource:
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/RefreshToken-*
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/AccessToken-*
     Metadata:
       SamResourceId: SnapshotFunctionRole
   SnapshotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/00bd8e3a9acab61c0fa4f8a00b3bb2f9
+      FunctionName: SnapshotFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6ce9c2e0e4a4d50e74cfe21c39225e99
       Handler: app.lambda_handler
       Runtime: python3.11
       Timeout: 60
-      Architectures:
-      - x86_64
       Role:
         Fn::GetAtt:
         - SnapshotFunctionRole
@@ -516,24 +558,116 @@ Resources:
       - Ref: SharedLayer
       Environment:
         Variables:
-          ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
-          SECRET_NAME:
-            Ref: SecretName
-          ACCOUNT_ID:
-            Ref: AWS::AccountId
+          ENDPOINT:
+            Ref: GatewayEndpoint
           ENABLE_ZONE_OMIT:
             Ref: EnableZoneOmission
           ZONE_OMIT_TAG:
             Ref: ZoneOmissionTag
+          SYNC_DEST:
+            Ref: SyncDest
+          SYNC_BUCKET:
+            Ref: SyncBucket
     Metadata:
       SamResourceId: SnapshotFunction
-  SnapshotCustomResource:
+  SnapshotListFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SnapshotListFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/8661e21fe84578a386e6e87c89b9b2de
+      Handler: app.lambda_handler
+      Runtime: python3.11
+      Timeout: 60
+      Policies:
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - route53:ListHostedZones
+          - route53:ListTagsForResources
+          Resource: '*'
+      Layers:
+      - Ref: SharedLayer
+    Metadata:
+      SamResourceId: SnapshotListFunction
+  SnapshotStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: SnapshotStateMachineRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: states.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: SnapshotInvokePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource:
+            - Fn::GetAtt:
+              - SnapshotFunction
+              - Arn
+            - Fn::GetAtt:
+              - SnapshotListFunction
+              - Arn
+            - Fn::Sub: ${SnapshotFunction.Arn}:*
+            - Fn::Sub: ${SnapshotListFunction.Arn}:*
+    Metadata:
+      SamResourceId: SnapshotStateMachineRole
+  SnapshotStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: Snapshot-Route53
+      RoleArn:
+        Fn::GetAtt:
+        - SnapshotStateMachineRole
+        - Arn
+      Definition:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/2c6826c5c832569e9c4a65ec6ed7f3ef
+    Metadata:
+      SamResourceId: SnapshotStateMachine
+  TriggerStateMachineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: TriggerStateMachineFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d9f4848fe1aeedd4141a9b231d627414
+      Handler: app.lambda_handler
+      Runtime: python3.11
+      Timeout: 60
+      Policies:
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: states:StartExecution
+          Resource:
+            Fn::GetAtt:
+            - SnapshotStateMachine
+            - Arn
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN:
+            Fn::GetAtt:
+            - SnapshotStateMachine
+            - Arn
+    Metadata:
+      SamResourceId: TriggerStateMachineFunction
+  TriggerSnapshotCR:
     Type: AWS::CloudFormation::CustomResource
     Properties:
       ServiceToken:
         Fn::GetAtt:
-        - SnapshotFunction
+        - TriggerStateMachineFunction
         - Arn
-    DependsOn: ConfigureCustomResource
+    DependsOn: SnapshotStateMachine
     Metadata:
-      SamResourceId: SnapshotCustomResource
+      SamResourceId: TriggerSnapshotCR
