@@ -50,11 +50,22 @@ def configure_application(event, context):
             secret_handler.delete(REFRESH_TOKEN_NAME)
 
             # empty CloudTrail bucket and remove it
-            bucket = event['ResourceProperties']['CloudTrailBucketName']
-            s3 = boto3.resource('s3')
-            bucket = s3.Bucket(bucket)
-            for obj in bucket.objects.filter():
-                s3.Object(bucket.name, obj.key).delete()
+            s3_client = boto3.resource('s3')
+
+            bucket_name = event['ResourceProperties']['CloudTrailBucketName']
+
+            # maxItems is 1000 because that's the max number of items that can be deleted in a single 
+            # call of delete_objects
+            paginator = s3_client.get_paginator('list_objects_v2', PaginationConfig={'MaxItems': 1000})
+            page_iterator = paginator.paginate(Bucket=bucket_name)
+
+            for page in page_iterator:
+                s3_client.delete_objects(
+                    Bucket=bucket_name,
+                    Delete={
+                        'Objects': [{'Key': obj['Key']} for obj in page.get('Contents', [])]
+                    }
+                )
 
             # clean up log groups
             delete_log_groups()
