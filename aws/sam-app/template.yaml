@@ -271,10 +271,11 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: "*"
-                Condition:
-                  StringEquals:
-                    secretsmanager:ResourceTag/APIKey: "NS1"
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/AccessToken-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/RefreshToken-*'
               - Effect: Allow
                 Action:
                   - sqs:SendMessage
@@ -367,6 +368,8 @@ Resources:
                 Resource: 
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/AccessToken-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/RefreshToken-*'
               - Effect: Allow
                 Action: cloudformation:DescribeStackResources
                 Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*'
@@ -395,7 +398,7 @@ Resources:
       CodeUri: src/configure
       Handler: app.configure_application
       Runtime: python3.11
-      Timeout: 60
+      Timeout: 300
       Role: !GetAtt ConfigureFunctionRole.Arn
       Layers:
         - !Ref SharedLayer
@@ -527,7 +530,7 @@ Resources:
         'Fn::Transform':
           Name: AWS::Include
           Parameters:
-            Location: state_machine_def.yaml
+            Location: ./state_machine_def.yaml
 
   TriggerStateMachineFunction:
     Type: AWS::Serverless::Function
