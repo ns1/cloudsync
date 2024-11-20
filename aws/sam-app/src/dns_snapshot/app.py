@@ -8,7 +8,7 @@ route53_client = boto3.client('route53')
 secret_handler = SecretHandler()
 
 zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
-zone_omit_tag = os.environ.get('ZONE_OMIT_TAG', 'CloudSync')
+zone_sync_tag = os.environ.get('ZONE_SYNC_TAG', 'CloudSync')
 snapshot_dest = os.environ.get('SYNC_DEST')
 s3_bucket_name = os.environ.get('SYNC_BUCKET')
 
@@ -37,8 +37,13 @@ def lambda_handler(event, context):
             marker['StartRecordIdentifier'] = event['iterator'].get('StartRecordIdentifier', "")
 
 
-    if current_zone_tags[current_zone_id].get('ENABLE_ZONE_OMIT', '').lower() and current_zone_tags[current_zone_id].get('ZONE_OMIT_TAG', '').lower() == 'cloudsync':
-        return {}
+    if zone_omit_enabled and zone_sync_tag not in current_zone_tags[current_zone_id]:
+        # update iterator
+        return {
+            'hosted_zones': event['hosted_zones'],
+            'zones_count': event['zones_count'],
+            'current_zone_index': current_zone_index + 1
+        }
     
     out = snapshot_zone(
         route53_client, 

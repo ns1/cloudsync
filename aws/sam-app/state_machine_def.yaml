@@ -29,12 +29,15 @@ States:
   isTruncated:
     Type: Choice
     Choices:
-    - Or:
-      - Variable: "$.iterator.IsTruncated"
-        BooleanEquals: true
-      - Variable: "$.iterator.current_zone_index"
-        NumericLessThanPath: "$.iterator.zones_count"
-      Next: Wait
+    - Next: Wait
+      Or:
+      - NumericLessThanPath: "$.iterator.zones_count"
+        Variable: "$.iterator.current_zone_index"
+      - And:
+        - IsPresent: true
+          Variable: "$.iterator.IsTruncated"
+        - BooleanEquals: true
+          Variable: "$.iterator.IsTruncated"
     Default: Done
   Wait:
     Type: Wait

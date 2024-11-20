@@ -32,29 +32,19 @@ Parameters:
     Default: "true"
     AllowedValues: ["true", "false"]
     Description: Indicate whether you would like to be able to omit certain zones from syncing. Enabled by default.
-  ZoneOmissionTag:
+  ZoneSyncTag:
     Type: String
     Default: CloudSync
     MaxLength: 128
-    Description: The tag that will indicate which zones are omitted from syncing.
-  SecretName:
+    Description: The tag that will indicate which zones are synced.
+  SyncDestination:
     Type: String
-    Default: CloudSync/APIKey
-  NS1APIKey:
-    Type: String
-    Default: api_key
-  SyncDest:
-    Type: String
-    Default: s3
+    Default: ns1
     Description: The sync destination for cloudsync.
   SyncBucket:
     Type: String
     Default: "cloudsync-outbound-endpoint"
-    Description: The sync s3 bucket when SyncDest is set to 's3'.
-  CloudSyncAPIKey:
-    Type: String
-    Default: 9a7b2f8c-6d5e-4a13-bc68-3cfe1d024a9e
-    Description: Non NS1 API Key for cloud sync.
+    Description: The sync s3 bucket when SyncDestination is set to 's3'.
   GatewayEndpoint:
     Type: String
     Default: https://api.nszero.com/cloudsync/v1beta1
@@ -321,10 +311,9 @@ Resources:
           Variables:
             # ENDPOINT: https://api.cloudsyncv2.nsone.co/dns
             ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns # AWS gateway
-            SECRET_NAME: !Ref SecretName
             ACCOUNT_ID: !Ref AWS::AccountId
             ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
-            ZONE_OMIT_TAG: !Ref ZoneOmissionTag
+            ZONE_SYNC_TAG: !Ref ZoneSyncTag
         Layers:
           - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
           - !Ref SharedLayer
@@ -404,8 +393,6 @@ Resources:
         - !Ref SharedLayer
       Environment:
         Variables:
-          NS1_API_KEY: !Ref NS1APIKey
-          CLOUD_SYNC_API_KEY: !Ref CloudSyncAPIKey
           STACK_NAME: !Ref "AWS::StackName" 
   
   ConfigureCustomResource:
@@ -472,8 +459,8 @@ Resources:
           Variables:
             ENDPOINT: !Ref GatewayEndpoint
             ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
-            ZONE_OMIT_TAG: !Ref ZoneOmissionTag
-            SYNC_DEST: !Ref SyncDest
+            ZONE_OMIT_TAG: !Ref ZoneSyncTag
+            SYNC_DEST: !Ref SyncDestination
             SYNC_BUCKET: !Ref SyncBucket
 
   SnapshotListFunction:

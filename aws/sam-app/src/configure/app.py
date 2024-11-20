@@ -9,8 +9,6 @@ cloudformation_client = boto3.client('cloudformation')
 logs_client = boto3.client('logs')
 
 # env variables
-ns1_api_key = os.environ['NS1_API_KEY']
-cloud_sync_api_key = os.environ['CLOUD_SYNC_API_KEY']
 stack_name = os.environ['STACK_NAME']
 
 def build_response(event, status, data, reason=None):
@@ -28,10 +26,14 @@ def build_response(event, status, data, reason=None):
     return response_data
 
 def configure_application(event, context):
+    secret_handler = SecretHandler()
+    
+    # get an api key
+    cloud_sync_api_key = secret_handler.get_if_present(CS_API_KEY_NAME)
+    ns1_api_key = secret_handler.get_if_present(NS1_API_KEY_NAME)
+
     if ns1_api_key is None and cloud_sync_api_key is None:
         raise Exception("an API key wasn't provided")
-    
-    secret_handler = SecretHandler()
 
     try:
         request_type = event['RequestType']

@@ -210,20 +210,3 @@ def get_tokens_using_api_key(token_endpoint, secret_handler):
         raise Exception(f"Failed to retrieve tokens using API Key, status code: {token_res.status_code}")
 
     return token_res
-
-
-# TODO: Handle the case when the secret doesn't exist in Secrets Manager.
-# TODO: clean up?
-def retrieve_secret(secret_id): 
-    url = f'http://localhost:2773/secretsmanager/get?secretId={secret_id}'
-    headers = { "X-Aws-Parameters-Secrets-Token": os.environ.get('AWS_SESSION_TOKEN') }
-    response = requests.get(url, headers=headers)
-
-    # will raise an exception if not 200
-    response.raise_for_status()
-    response = response.json()
-
-    print(response)
-
-    # this key will be there unless the request fails
-    return response['SecretString']
