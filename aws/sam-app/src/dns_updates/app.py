@@ -9,8 +9,9 @@ from secret_handler import SecretHandler
 
 endpoint = os.environ.get('ENDPOINT')
 zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
-zone_omit_tag = os.environ.get('ZONE_OMIT_TAG', 'CloudSync')
+zone_sync_tag = os.environ.get('ZONE_SYNC_TAG', 'CloudSync')
 account_id = os.environ.get('ACCOUNT_ID')
+snapshot_dest = os.environ.get('SYNC_DEST')
 
 route53_client = boto3.client('route53')
 secret_handler = SecretHandler()
@@ -74,7 +75,8 @@ def handle_health_checks(record):
     
 
     msg = {
-        'source': 'AWS-Route53',
+        'source': 'route53',
+        'dest': snapshot_dest,
         'version': 1,
         'account_id': account_id,
         'msg_type': 'update',
@@ -105,11 +107,6 @@ def handle_zones_and_records(zone_id, record):
     zone_name = None
 
     if event_name != 'DeleteHostedZone':
-    # TODO: Make zone name optional, because updates don't need it.
-    # TODO: Why not pull the zone name from the payload for zone create?
-        r = route53_client.get_hosted_zone(Id=zone_id)
-        zone_name = r['HostedZone']['Name']
-
         tags = route53_client.list_tags_for_resource(
             ResourceType='hostedzone',
             ResourceId=zone_id,
@@ -118,34 +115,43 @@ def handle_zones_and_records(zone_id, record):
         tags = tags['ResourceTagSet'].get('Tags', [])
 
         if zone_omit_enabled:
-            # check whether the zone_omit tag was added
+            # check whether the zone_omit tag was just added
             if event_name == 'ChangeTagsForResource':
                 new_tags = body['detail']['requestParameters'].get('addTags', [])
 
-                if zone_omit_tag in [t['key'] for t in new_tags]:
+                if zone_sync_tag in [t['key'] for t in new_tags]:
                     # the zone_omit tag may have been added. in fact, all tags show up here
                     # regardless of whether they were just added, so we'll have to snapshot
                     # in case the tag was just added. 
                     print("snapshotting")
-                    #TODO: tweak snapshot call here
+                    #TODO: tweak snapshot call here to support loop and wait period.
                     # snapshot_zone(route53_client, zone_id, zone_name, account_id, endpoint, tags)
                     return
 
-            if zone_omit_tag not in [t['Key'] for t in tags]:
+            if zone_sync_tag not in [t['Key'] for t in tags]:
                 # skip zone
                 return
 
+
+    # TODO: Make zone name optional, because updates don't need it.
+    # TODO: Why not pull the zone name from the payload for zone create?
+        r = route53_client.get_hosted_zone(Id=zone_id)
+        zone_name = r['HostedZone']['Name']
+
+
     msg = {
-        'source': 'AWS-Route53',
+        'source': 'route53',
+        'dest': snapshot_dest,
         'version': 1,
         'account_id': account_id,
         'msg_type': 'update',
-        # 'zone_id': zone_id,
+        'zone_id': zone_id,
         'zone_name': zone_name,
         'page': 1,
         'truncated': False,
         'payload': body['detail']
     }
+
     response = dns_post(endpoint, msg, secret_handler)
 
     if response.status_code != 202:

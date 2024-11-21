@@ -318,6 +318,7 @@ Resources:
             ACCOUNT_ID: !Ref AWS::AccountId
             ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
             ZONE_SYNC_TAG: !Ref ZoneSyncTag
+            SYNC_DEST: !Ref SyncDestination
         Layers:
           - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
           - !Ref SharedLayer
