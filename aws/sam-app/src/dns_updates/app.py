@@ -4,7 +4,8 @@ import json
 import requests
 import boto3
 
-from common import retrieve_secret, snapshot_zone
+from common import dns_post
+from secret_handler import SecretHandler
 
 endpoint = os.environ.get('ENDPOINT')
 zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
@@ -12,6 +13,7 @@ zone_omit_tag = os.environ.get('ZONE_OMIT_TAG', 'CloudSync')
 account_id = os.environ.get('ACCOUNT_ID')
 
 route53_client = boto3.client('route53')
+secret_handler = SecretHandler()
 
 
 def record_handler(record):
@@ -75,7 +77,6 @@ def handle_health_checks(record):
         'source': 'AWS-Route53',
         'version': 1,
         'account_id': account_id,
-        'auth_key': retrieve_secret(os.environ['SECRET_NAME']),
         'msg_type': 'update',
         'zone_name': 'health-checks',
         'page': 1,
@@ -83,8 +84,11 @@ def handle_health_checks(record):
         'payload': body['detail']
     }
     
-    return send_message(msg, record['messageId'])
+    response = dns_post(endpoint, msg, secret_handler)
 
+    if response.status_code != 202:
+        print(f"POST to {endpoint} failed with {response.status_code}: {response.content}")
+        return record['messageId'] 
         
 def handle_zones_and_records(zone_id, record):
     try: 
@@ -135,7 +139,6 @@ def handle_zones_and_records(zone_id, record):
         'source': 'AWS-Route53',
         'version': 1,
         'account_id': account_id,
-        'auth_key': retrieve_secret(os.environ['SECRET_NAME']),
         'msg_type': 'update',
         # 'zone_id': zone_id,
         'zone_name': zone_name,
@@ -143,22 +146,12 @@ def handle_zones_and_records(zone_id, record):
         'truncated': False,
         'payload': body['detail']
     }
-    
-    return send_message(msg, record['messageId'])
-
-def send_message(msg, message_id):
-    json_msg = json.dumps(msg)
-    headers = {
-        'content-type' : 'application/json',
-        'content-length' : str(len(json_msg))
-    }
-    response = requests.post(endpoint, data=json_msg, headers=headers)
-
-    print(json_msg)
+    response = dns_post(endpoint, msg, secret_handler)
 
     if response.status_code != 202:
         print(f"POST to {endpoint} failed with {response.status_code}: {response.content}")
-        return message_id 
+        return record['messageId'] 
+
 
 def handler(event, context):
     print(event)

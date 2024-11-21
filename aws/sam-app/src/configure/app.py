@@ -39,7 +39,7 @@ def configure_application(event, context):
         request_type = event['RequestType']
         if request_type == 'Create':
             # store api keys in secret manager
-            if cloud_sync_api_key != '':
+            if cloud_sync_api_key:
                 secret_handler.upsert(CS_API_KEY_NAME, cloud_sync_api_key)
             else:
                 secret_handler.upsert(NS1_API_KEY_NAME, ns1_api_key)

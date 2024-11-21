@@ -1,7 +1,8 @@
 import os
 import boto3
 
-from common import snapshot_zone, SecretHandler
+from common import snapshot_zone
+from secret_handler import SecretHandler
 
 route53_client = boto3.client('route53')
 
