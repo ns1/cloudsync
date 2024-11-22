@@ -95,17 +95,15 @@ def handle_health_checks(record):
 def handle_zones_and_records(zone_id, record):
     try: 
         body = json.loads(record['body'])
-
     except json.JSONDecodeError:
         print(f"error decoding body as JSON")
         print(record['body'])
         return record['messageId']
     
+    # get zone metadata
+    r = route53_client.get_hosted_zone(Id=zone_id)    
+
     event_name = body['detail'].get('eventName')
-
-    tags = []
-    zone_name = None
-
     if event_name != 'DeleteHostedZone':
         tags = route53_client.list_tags_for_resource(
             ResourceType='hostedzone',
@@ -115,7 +113,7 @@ def handle_zones_and_records(zone_id, record):
         tags = tags['ResourceTagSet'].get('Tags', [])
 
         if zone_omit_enabled:
-            # check whether the zone_omit tag was just added
+            # check whether the zone_sync tag was just added
             if event_name == 'ChangeTagsForResource':
                 new_tags = body['detail']['requestParameters'].get('addTags', [])
 
@@ -123,20 +121,21 @@ def handle_zones_and_records(zone_id, record):
                     # the zone_omit tag may have been added. in fact, all tags show up here
                     # regardless of whether they were just added, so we'll have to snapshot
                     # in case the tag was just added. 
-                    print("snapshotting")
-                    #TODO: tweak snapshot call here to support loop and wait period.
-                    # snapshot_zone(route53_client, zone_id, zone_name, account_id, endpoint, tags)
+                    # TODO: Consider using state to determine if a snapshot is needed.
+                    response = boto3.client('stepfunctions').start_execution(
+                        stateMachineArn=os.environ.get('STATE_MACHINE_ARN'),
+                        input=json.dumps({"zone_name": r['HostedZone']['Name']})
+                    )
+                    
+                    if response['ResponseMetadata']['HTTPStatusCode'] != 200:
+                        print(f"list_hosted_zones failed with status code: {response['ResponseMetadata']['HTTPStatusCode']}. {zones_response}")
+                        raise Exception
+
                     return
 
             if zone_sync_tag not in [t['Key'] for t in tags]:
                 # skip zone
                 return
-
-
-    # TODO: Make zone name optional, because updates don't need it.
-    # TODO: Why not pull the zone name from the payload for zone create?
-        r = route53_client.get_hosted_zone(Id=zone_id)
-        zone_name = r['HostedZone']['Name']
 
 
     msg = {
@@ -146,7 +145,7 @@ def handle_zones_and_records(zone_id, record):
         'account_id': account_id,
         'msg_type': 'update',
         'zone_id': zone_id,
-        'zone_name': zone_name,
+        'zone_name': r['HostedZone']['Name'],
         'page': 1,
         'truncated': False,
         'payload': body['detail']

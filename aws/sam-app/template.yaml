@@ -293,6 +293,9 @@ Resources:
                 Action:
                   - route53:ListTagsForResource
                 Resource: "*"
+              - Effect: "Allow"
+                Action: states:StartExecution
+                Resource: !GetAtt SnapshotStateMachine.Arn
 
   EventLambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -319,6 +322,7 @@ Resources:
             ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
             ZONE_SYNC_TAG: !Ref ZoneSyncTag
             SYNC_DEST: !Ref SyncDestination
+            STATE_MACHINE_ARN: !GetAtt SnapshotStateMachine.Arn
         Layers:
           - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
           - !Ref SharedLayer

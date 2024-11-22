@@ -11,14 +11,24 @@ def lambda_handler(event, context):
         print(f"list_hosted_zones failed with status code: {zones_response['ResponseMetadata']['HTTPStatusCode']}. {zones_response}")
         raise Exception
 
+    zones = zones_response['HostedZones']
+    zone_ids = [z['Id'].split('/')[-1] for z in zones]
 
-    zone_ids = [z['Id'].split('/')[-1] for z in zones_response['HostedZones']]
-
+    # single zone snapshot case
+    if 'zone_name' in event:
+        target_zone = event['zone_name'] if event['zone_name'].endswith('.') else event['zone_name'] + '.'
+        
+        for z in zones_response['HostedZones']:
+            if z['Name'] == target_zone:
+                zones = [z]
+                zone_ids = [z['Id'].split('/')[-1]]
+                break
+    
     tags = get_tags_for_zones(route53_client, zone_ids)
 
     return {
-        'hosted_zones': zones_response['HostedZones'],
-        'zones_count': len(zones_response['HostedZones']),
+        'hosted_zones': zones,
+        'zones_count': len(zones),
         'current_zone_index': 0,
         'tags': tags
     }
