@@ -48,6 +48,11 @@ Parameters:
   GatewayEndpoint:
     Type: String
     Description: Cloud sync gateway endpoint.
+  NS1APIKey:
+    Type: String
+  CloudSyncAPIKey:
+    Type: String
+    Default: ""
 
 Resources:
   DeadLetterQueue:
@@ -402,6 +407,8 @@ Resources:
         - !Ref SharedLayer
       Environment:
         Variables:
+          NS1_API_KEY: !Ref NS1APIKey
+          CLOUDSYNC_API_KEY: !Ref CloudSyncAPIKey
           STACK_NAME: !Ref "AWS::StackName" 
   
   ConfigureCustomResource:
