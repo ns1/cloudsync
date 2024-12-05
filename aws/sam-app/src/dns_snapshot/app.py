@@ -24,8 +24,6 @@ def lambda_handler(event, context):
     current_zone_id = current_zone['Id'].split('/')[-1]
     current_zone_tags = {current_zone_id: event['tags'][current_zone_id]} 
 
-    print(f"Now snapshotting {current_zone['Name']} zone with zone_id: {current_zone_id}")
-
     # check for pagination
     marker = None
     if 'iterator' in event and 'StartRecordName' in event['iterator']:

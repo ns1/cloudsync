@@ -2,7 +2,8 @@ import json
 import os
 import requests
 import boto3
-from common import SecretHandler, NS1_API_KEY_NAME, CS_API_KEY_NAME, ACCESS_TOKEN_NAME, REFRESH_TOKEN_NAME
+from constants import NS1_API_KEY_NAME, CS_API_KEY_NAME, ACCESS_TOKEN_NAME, REFRESH_TOKEN_NAME
+from secret_handler import SecretHandler
 
 secrets_manager_client = boto3.client('secretsmanager')
 cloudformation_client = boto3.client('cloudformation')
