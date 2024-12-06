@@ -44,10 +44,15 @@ Parameters:
     AllowedValues: [ns1, s3]
   SyncBucket:
     Type: String
+    Default: ""
     Description: The sync s3 bucket when SyncDestination is set to 's3'.
   GatewayEndpoint:
     Type: String
     Description: Cloud sync gateway endpoint.
+  NS1APIKey:
+    Type: String
+    Description: NS1 account API key.
+
 
 Resources:
   DeadLetterQueue:
@@ -402,6 +407,8 @@ Resources:
         - !Ref SharedLayer
       Environment:
         Variables:
+          NS1_API_KEY: !Ref NS1APIKey
+          CLOUDSYNC_API_KEY: ""
           STACK_NAME: !Ref "AWS::StackName" 
   
   ConfigureCustomResource:
