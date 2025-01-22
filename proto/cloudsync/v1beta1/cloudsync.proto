@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package cloudsync.v1beta1;
+
+option go_package = "gen/v1beta1;cloudsyncv1beta1";
+
+service CloudSyncService {
+    rpc SendUpdate(SendUpdateRequest) returns (SendUpdateResponse);
+    rpc SendSnapshot(SendSnapshotRequest) returns (SendSnapshotResponse);
+    rpc GetTokens(GetTokensRequest) returns (GetTokensResponse);
+    rpc RefreshTokens(RefreshTokensRequest) returns (RefreshTokensResponse);
+}
+
+enum MessageType {
+    MESSAGE_TYPE_UNSPECIFIED = 0;
+    MESSAGE_TYPE_UPDATE = 1;
+    MESSAGE_TYPE_SNAPSHOT = 2;
+}
+
+enum SourceType {
+    SOURCE_TYPE_UNSPECIFIED = 0;
+    SOURCE_TYPE_AWS = 1;
+    SOURCE_TYPE_AZURE = 2;
+    SOURCE_TYPE_GCP = 3;
+}
+
+message SendUpdateRequest {
+    SourceType source = 1;
+    string version = 2;
+    string account_id = 3;
+    MessageType msg_type = 4;
+    string zone_id = 5;
+    string zone_name = 6;
+    optional int32 page = 7;
+    bool truncated = 8;
+    string payload = 9;
+}
+
+message SendUpdateResponse {}
+
+message SnapshotPayload {
+    repeated string resource_record_sets = 1;
+    repeated string tags = 2;
+}
+
+message SendSnapshotRequest {
+    SourceType source = 1;
+    string version = 2;
+    optional string dest = 3;
+    optional string bucket = 4;
+    MessageType msg_type = 5;
+    optional int32 page = 6;
+    optional bool truncated = 7;
+    optional int32 num_records = 8;
+    string zone_id = 9;
+    string zone_name = 10;
+    SnapshotPayload payload = 11;
+}
+
+message SendSnapshotResponse {}
+
+message GetTokensRequest {}
+message GetTokensResponse {
+    string access_token = 1;
+    string refresh_token = 2;
+}
+
+message RefreshTokensRequest {}
+message RefreshTokensResponse {
+    string access_token = 1;
+    string refresh_token = 2;
+}

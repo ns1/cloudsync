@@ -1,0 +1,14 @@
+# © Copyright IBM Corp. 2025
+
+version: v2
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE
+deps:
+  - buf.build/bufbuild/protovalidate
+
+modules:
+  - path: proto

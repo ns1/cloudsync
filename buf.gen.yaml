@@ -1,0 +1,42 @@
+# © Copyright IBM Corp. 2025
+
+version: v2
+# 'clean', when set to true, deletes the directories, zip files, and/or jar files specified in the `out` field for
+# all plugins before running code generation.
+clean: true
+
+managed:
+  enabled: true
+  # protovalidate-go assumes the constraint extensions are imported into the 
+  # generated code via buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go.
+  disable:
+    - file_option: go_package_prefix
+      module: buf.build/bufbuild/protovalidate
+  override:
+    - file_option: go_package_prefix
+      value: github.com/nsone/cloudsync-public/gen
+
+# 'plugins' is a list of plugin configurations used for buf generate.
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/connectrpc/go
+    out: gen/go
+    opt: paths=source_relative
+  # - local: protoc-gen-connect-openapi
+  #   out: gen/oas
+  #   opt:
+  #   - base=base-api-spec.yaml
+  - remote: buf.build/grpc/python:v1.68.2
+    out: gen/python
+  - remote: buf.build/protocolbuffers/python:v29.0
+    out: gen/python
+  
+# 'inputs' is a list of inputs that will be run for buf generate. It's a
+# required key for v2 buf.gen.yaml and allows you to specify options based on the type
+# of input (https://buf.build/docs/reference/inputs.md#source) being configured.
+inputs:
+  # Local module at provided directory path
+  - directory: proto
+  
