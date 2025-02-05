@@ -17,8 +17,8 @@ class SecretHandler():
         if res['ResponseMetadata']['HTTPStatusCode'] != 200:
             raise Exception(f"Failed to retrieve {secret_id} secret from secret manager")
         
-        if len(res['SecretString']) == 0:
-            raise Exception(f"{secret_id} secret has no value")
+        if len(res['SecretString']) <= 1:
+            return None
 
         self.cache[secret_id] = res['SecretString']
         return res['SecretString']
