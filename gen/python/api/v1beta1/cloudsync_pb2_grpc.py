@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from cloudsync.v1beta1 import cloudsync_pb2 as cloudsync_dot_v1beta1_dot_cloudsync__pb2
+from api.v1beta1 import cloudsync_pb2 as api_dot_v1beta1_dot_cloudsync__pb2
 
 
 class CloudSyncServiceStub(object):
@@ -15,24 +15,24 @@ class CloudSyncServiceStub(object):
             channel: A grpc.Channel.
         """
         self.SendUpdate = channel.unary_unary(
-                '/cloudsync.v1beta1.CloudSyncService/SendUpdate',
-                request_serializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendUpdateRequest.SerializeToString,
-                response_deserializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendUpdateResponse.FromString,
+                '/api.v1beta1.CloudSyncService/SendUpdate',
+                request_serializer=api_dot_v1beta1_dot_cloudsync__pb2.SendUpdateRequest.SerializeToString,
+                response_deserializer=api_dot_v1beta1_dot_cloudsync__pb2.SendUpdateResponse.FromString,
                 _registered_method=True)
         self.SendSnapshot = channel.unary_unary(
-                '/cloudsync.v1beta1.CloudSyncService/SendSnapshot',
-                request_serializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotRequest.SerializeToString,
-                response_deserializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotResponse.FromString,
+                '/api.v1beta1.CloudSyncService/SendSnapshot',
+                request_serializer=api_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotRequest.SerializeToString,
+                response_deserializer=api_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotResponse.FromString,
                 _registered_method=True)
         self.GetTokens = channel.unary_unary(
-                '/cloudsync.v1beta1.CloudSyncService/GetTokens',
-                request_serializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.GetTokensRequest.SerializeToString,
-                response_deserializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.GetTokensResponse.FromString,
+                '/api.v1beta1.CloudSyncService/GetTokens',
+                request_serializer=api_dot_v1beta1_dot_cloudsync__pb2.GetTokensRequest.SerializeToString,
+                response_deserializer=api_dot_v1beta1_dot_cloudsync__pb2.GetTokensResponse.FromString,
                 _registered_method=True)
         self.RefreshTokens = channel.unary_unary(
-                '/cloudsync.v1beta1.CloudSyncService/RefreshTokens',
-                request_serializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensRequest.SerializeToString,
-                response_deserializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensResponse.FromString,
+                '/api.v1beta1.CloudSyncService/RefreshTokens',
+                request_serializer=api_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensRequest.SerializeToString,
+                response_deserializer=api_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensResponse.FromString,
                 _registered_method=True)
 
 
@@ -68,29 +68,29 @@ def add_CloudSyncServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'SendUpdate': grpc.unary_unary_rpc_method_handler(
                     servicer.SendUpdate,
-                    request_deserializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendUpdateRequest.FromString,
-                    response_serializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendUpdateResponse.SerializeToString,
+                    request_deserializer=api_dot_v1beta1_dot_cloudsync__pb2.SendUpdateRequest.FromString,
+                    response_serializer=api_dot_v1beta1_dot_cloudsync__pb2.SendUpdateResponse.SerializeToString,
             ),
             'SendSnapshot': grpc.unary_unary_rpc_method_handler(
                     servicer.SendSnapshot,
-                    request_deserializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotRequest.FromString,
-                    response_serializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotResponse.SerializeToString,
+                    request_deserializer=api_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotRequest.FromString,
+                    response_serializer=api_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotResponse.SerializeToString,
             ),
             'GetTokens': grpc.unary_unary_rpc_method_handler(
                     servicer.GetTokens,
-                    request_deserializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.GetTokensRequest.FromString,
-                    response_serializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.GetTokensResponse.SerializeToString,
+                    request_deserializer=api_dot_v1beta1_dot_cloudsync__pb2.GetTokensRequest.FromString,
+                    response_serializer=api_dot_v1beta1_dot_cloudsync__pb2.GetTokensResponse.SerializeToString,
             ),
             'RefreshTokens': grpc.unary_unary_rpc_method_handler(
                     servicer.RefreshTokens,
-                    request_deserializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensRequest.FromString,
-                    response_serializer=cloudsync_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensResponse.SerializeToString,
+                    request_deserializer=api_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensRequest.FromString,
+                    response_serializer=api_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'cloudsync.v1beta1.CloudSyncService', rpc_method_handlers)
+            'api.v1beta1.CloudSyncService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('cloudsync.v1beta1.CloudSyncService', rpc_method_handlers)
+    server.add_registered_method_handlers('api.v1beta1.CloudSyncService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -111,9 +111,9 @@ class CloudSyncService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/cloudsync.v1beta1.CloudSyncService/SendUpdate',
-            cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendUpdateRequest.SerializeToString,
-            cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendUpdateResponse.FromString,
+            '/api.v1beta1.CloudSyncService/SendUpdate',
+            api_dot_v1beta1_dot_cloudsync__pb2.SendUpdateRequest.SerializeToString,
+            api_dot_v1beta1_dot_cloudsync__pb2.SendUpdateResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -138,9 +138,9 @@ class CloudSyncService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/cloudsync.v1beta1.CloudSyncService/SendSnapshot',
-            cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotRequest.SerializeToString,
-            cloudsync_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotResponse.FromString,
+            '/api.v1beta1.CloudSyncService/SendSnapshot',
+            api_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotRequest.SerializeToString,
+            api_dot_v1beta1_dot_cloudsync__pb2.SendSnapshotResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -165,9 +165,9 @@ class CloudSyncService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/cloudsync.v1beta1.CloudSyncService/GetTokens',
-            cloudsync_dot_v1beta1_dot_cloudsync__pb2.GetTokensRequest.SerializeToString,
-            cloudsync_dot_v1beta1_dot_cloudsync__pb2.GetTokensResponse.FromString,
+            '/api.v1beta1.CloudSyncService/GetTokens',
+            api_dot_v1beta1_dot_cloudsync__pb2.GetTokensRequest.SerializeToString,
+            api_dot_v1beta1_dot_cloudsync__pb2.GetTokensResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -192,9 +192,9 @@ class CloudSyncService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/cloudsync.v1beta1.CloudSyncService/RefreshTokens',
-            cloudsync_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensRequest.SerializeToString,
-            cloudsync_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensResponse.FromString,
+            '/api.v1beta1.CloudSyncService/RefreshTokens',
+            api_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensRequest.SerializeToString,
+            api_dot_v1beta1_dot_cloudsync__pb2.RefreshTokensResponse.FromString,
             options,
             channel_credentials,
             insecure,

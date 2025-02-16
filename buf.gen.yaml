@@ -14,7 +14,7 @@ managed:
       module: buf.build/bufbuild/protovalidate
   override:
     - file_option: go_package_prefix
-      value: github.com/nsone/cloudsync-public/gen
+      value: github.com/ns1/cloudsync/gen
 
 # 'plugins' is a list of plugin configurations used for buf generate.
 plugins:
