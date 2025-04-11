@@ -22,8 +22,8 @@ Metadata:
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.4.0'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.0
+    SemanticVersion: '0.4.1'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.1
 Parameters:
   CloudTrailName:
     Type: String
@@ -36,33 +36,28 @@ Parameters:
     - 'false'
     Description: Indicate whether you would like to be able to omit certain zones
       from syncing. Enabled by default.
-  ZoneOmissionTag:
+  ZoneSyncTag:
     Type: String
     Default: CloudSync
     MaxLength: 128
-    Description: The tag that will indicate which zones are omitted from syncing.
-  SecretName:
+    Description: The tag that will indicate which zones are synced.
+  SyncDestination:
     Type: String
-    Default: CloudSync/APIKey
-  NS1APIKey:
-    Type: String
-    Default: api_key
-  SyncDest:
-    Type: String
-    Default: s3
+    Default: ns1
     Description: The sync destination for cloudsync.
+    AllowedValues:
+    - ns1
+    - s3
   SyncBucket:
     Type: String
-    Default: cloudsync-outbound-endpoint
-    Description: The sync s3 bucket when SyncDest is set to 's3'.
-  CloudSyncAPIKey:
-    Type: String
-    Default: 9a7b2f8c-6d5e-4a13-bc68-3cfe1d024a9e
-    Description: Non NS1 API Key for cloud sync.
+    Default: ''
+    Description: The sync s3 bucket when SyncDestination is set to 's3'.
   GatewayEndpoint:
     Type: String
-    Default: https://api.nszero.com/cloudsync/v1beta1
     Description: Cloud sync gateway endpoint.
+  NS1APIKey:
+    Type: String
+    Description: NS1 account API key.
 Resources:
   DeadLetterQueue:
     Type: AWS::SQS::Queue
@@ -285,7 +280,7 @@ Resources:
     Properties:
       LayerName: SharedLayer
       Description: Common functions
-      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/42c7338a3935db3ed7b6c167d62343e0
+      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/bf956fb1d7dc5307713a4031dd3720d5
       CompatibleRuntimes:
       - python3.11
       RetentionPolicy: Delete
@@ -314,10 +309,17 @@ Resources:
           - Effect: Allow
             Action:
             - secretsmanager:GetSecretValue
-            Resource: '*'
-            Condition:
-              StringEquals:
-                secretsmanager:ResourceTag/APIKey: NS1
+            Resource:
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey*
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey*
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            - secretsmanager:CreateSecret
+            - secretsmanager:UpdateSecret
+            Resource:
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/RefreshToken*
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/AccessToken*
           - Effect: Allow
             Action:
             - sqs:SendMessage
@@ -346,6 +348,12 @@ Resources:
             Action:
             - route53:ListTagsForResource
             Resource: '*'
+          - Effect: Allow
+            Action: states:StartExecution
+            Resource:
+              Fn::GetAtt:
+              - SnapshotStateMachine
+              - Arn
     Metadata:
       SamResourceId: DNSUpdateFunctionRole
   EventLambdaInvokePermission:
@@ -365,7 +373,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: DNSUpdateFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/34bc2dd9768be0fd142b6cf18f41ca2f
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/434af26db43429dc699aecfda8401b86
       Handler: app.handler
       Runtime: python3.11
       Timeout: 10
@@ -375,15 +383,20 @@ Resources:
         - Arn
       Environment:
         Variables:
-          ENDPOINT: https://e9y7a31hjf.execute-api.us-east-1.amazonaws.com/Prod/dns
-          SECRET_NAME:
-            Ref: SecretName
+          ENDPOINT:
+            Ref: GatewayEndpoint
           ACCOUNT_ID:
             Ref: AWS::AccountId
           ENABLE_ZONE_OMIT:
             Ref: EnableZoneOmission
-          ZONE_OMIT_TAG:
-            Ref: ZoneOmissionTag
+          ZONE_SYNC_TAG:
+            Ref: ZoneSyncTag
+          SYNC_DEST:
+            Ref: SyncDestination
+          STATE_MACHINE_ARN:
+            Fn::GetAtt:
+            - SnapshotStateMachine
+            - Arn
       Layers:
       - Fn::Sub: arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
       - Ref: SharedLayer
@@ -434,6 +447,8 @@ Resources:
             Resource:
             - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey-*
             - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey-*
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/AccessToken-*
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/RefreshToken-*
           - Effect: Allow
             Action: cloudformation:DescribeStackResources
             Resource:
@@ -441,7 +456,11 @@ Resources:
           - Effect: Allow
             Action: logs:DeleteLogGroup
             Resource:
-              Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/cloudsync*
+            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*ConfigureFunction*
+            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*SnapshotFunction*
+            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*SnapshotListFunction*
+            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*TriggerStateMachineFunction*
+            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*DNSUpdateFunction*
           - Effect: Allow
             Action:
             - s3:DeleteObject
@@ -467,10 +486,10 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: ConfigureFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d3a9c5f637dfc10ad7c346707e9f6371
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/ac59d8dffc9b9342b6c3c723c3d3d92a
       Handler: app.configure_application
       Runtime: python3.11
-      Timeout: 60
+      Timeout: 300
       Role:
         Fn::GetAtt:
         - ConfigureFunctionRole
@@ -481,8 +500,7 @@ Resources:
         Variables:
           NS1_API_KEY:
             Ref: NS1APIKey
-          CLOUD_SYNC_API_KEY:
-            Ref: CloudSyncAPIKey
+          CLOUDSYNC_API_KEY: ''
           STACK_NAME:
             Ref: AWS::StackName
     Metadata:
@@ -545,7 +563,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: SnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6ce9c2e0e4a4d50e74cfe21c39225e99
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/fe2418a273db0b2bd75ada28f0838df6
       Handler: app.lambda_handler
       Runtime: python3.11
       Timeout: 60
@@ -563,9 +581,9 @@ Resources:
           ENABLE_ZONE_OMIT:
             Ref: EnableZoneOmission
           ZONE_OMIT_TAG:
-            Ref: ZoneOmissionTag
+            Ref: ZoneSyncTag
           SYNC_DEST:
-            Ref: SyncDest
+            Ref: SyncDestination
           SYNC_BUCKET:
             Ref: SyncBucket
     Metadata:
@@ -574,7 +592,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: SnapshotListFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/8661e21fe84578a386e6e87c89b9b2de
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/74a526d073b785d17d7ed62ded6512d9
       Handler: app.lambda_handler
       Runtime: python3.11
       Timeout: 60
@@ -633,14 +651,14 @@ Resources:
         Fn::Transform:
           Name: AWS::Include
           Parameters:
-            Location: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/2c6826c5c832569e9c4a65ec6ed7f3ef
+            Location: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/b4087431f741a819f4ca92cb5e75961e
     Metadata:
       SamResourceId: SnapshotStateMachine
   TriggerStateMachineFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: TriggerStateMachineFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d9f4848fe1aeedd4141a9b231d627414
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/ff3afe3a98f56f7f268d49bb15a82333
       Handler: app.lambda_handler
       Runtime: python3.11
       Timeout: 60
