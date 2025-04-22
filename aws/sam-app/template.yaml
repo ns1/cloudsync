@@ -503,6 +503,64 @@ Resources:
       Layers:
         - !Ref SharedLayer
 
+  HealthCheckSnapshotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: HCSnapshotFunction
+      CodeUri: ./src/hc_snapshot
+      Handler: app.lambda_handler
+      Runtime: python3.11
+      Timeout: 60
+      Role: !GetAtt HCSnapshotFunctionRole.Arn
+      Layers:
+        - !Ref SharedLayer
+        - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+      Environment:
+          Variables:
+            ACCOUNT_ID: !Ref AWS::AccountId
+            ENDPOINT: !Ref GatewayEndpoint
+            SYNC_DEST: !Ref SyncDestination
+
+  HCSnapshotFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: HCSnapshotFunctionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: HealthChecksSnapshot
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:ListHealthChecks
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey-*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:UpdateSecret
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/RefreshToken-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/AccessToken-*'
+
+                  
   SnapshotStateMachineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -526,8 +584,10 @@ Resources:
                 Resource:
                   - !GetAtt SnapshotFunction.Arn
                   - !GetAtt SnapshotListFunction.Arn
+                  - !GetAtt HealthCheckSnapshotFunction.Arn
                   - !Sub ${SnapshotFunction.Arn}:*
                   - !Sub ${SnapshotListFunction.Arn}:*
+                  - !Sub ${HealthCheckSnapshotFunction.Arn}:*
                   
   SnapshotStateMachine:
     Type: AWS::StepFunctions::StateMachine
