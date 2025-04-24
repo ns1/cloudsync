@@ -48,6 +48,7 @@ Parameters:
     Description: The sync s3 bucket when SyncDestination is set to 's3'.
   GatewayEndpoint:
     Type: String
+    Default: https://api.nsone.net/cloudsync/v1beta1
     Description: Cloud sync gateway endpoint.
   NS1APIKey:
     Type: String
