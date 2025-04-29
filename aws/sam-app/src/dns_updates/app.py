@@ -63,6 +63,8 @@ def record_handler(record):
         case 'CreateHealthCheck' | 'DeleteHealthCheck':
             return handle_health_checks(record)
     
+        case 'ChangeCidrCollection' | 'DeleteCidrCollection':
+            return handle_cidr_collections(record)
 
 def handle_health_checks(record):
     try: 
@@ -92,6 +94,35 @@ def handle_health_checks(record):
         print(f"POST to {endpoint} failed with {response.status_code}: {response.content}")
         return record['messageId'] 
         
+def handle_cidr_collections(record):
+    try: 
+        body = json.loads(record['body'])
+
+    except json.JSONDecodeError:
+        print(f"error decoding body as JSON")
+        print(record['body'])
+        return record['messageId']
+    
+
+    msg = {
+        'source': 'route53',
+        'dest': snapshot_dest,
+        'version': 1,
+        'account_id': account_id,
+        'msg_type': 'update',
+        'zone_name': 'cidr-collections',
+        'zone_id': 'cidr-collections',
+        'page': 1,
+        'truncated': False,
+        'payload': body['detail']
+    }
+    
+    response = dns_post(endpoint, msg, secret_handler)
+
+    if response.status_code != 202:
+        print(f"POST to {endpoint} failed with {response.status_code}: {response.content}")
+        return record['messageId'] 
+
 def handle_zones_and_records(zone_id, record):
     try: 
         body = json.loads(record['body'])

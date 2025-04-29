@@ -210,6 +210,8 @@ Resources:
             - CreateHealthCheck
             - DeleteHealthCheck
             - UpdateHealthCheck
+            - ChangeCidrCollection
+            - DeleteCidrCollection
           errorCode:
             - exists: false
       Targets: 
