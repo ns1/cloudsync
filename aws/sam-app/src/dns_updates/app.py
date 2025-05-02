@@ -60,7 +60,7 @@ def record_handler(record):
             zone_id = body['detail']['requestParameters']['resourceId']
             return handle_zones_and_records(zone_id, record)
         
-        case 'CreateHealthCheck' | 'DeleteHealthCheck':
+        case 'CreateHealthCheck' | 'UpdateHealthCheck' | 'DeleteHealthCheck':
             return handle_health_checks(record)
     
 
@@ -81,6 +81,7 @@ def handle_health_checks(record):
         'account_id': account_id,
         'msg_type': 'update',
         'zone_name': 'health-checks',
+        'zone_id': 'health-checks',
         'page': 1,
         'truncated': False,
         'payload': body['detail']
