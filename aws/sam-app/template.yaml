@@ -598,7 +598,7 @@ Resources:
         'Fn::Transform':
           Name: AWS::Include
           Parameters:
-            Location: ./state_machine_def.yaml
+            Location: ./state_machine_def.json
 
   TriggerStateMachineFunction:
     Type: AWS::Serverless::Function
