@@ -132,11 +132,14 @@ def handle_zones_and_records(zone_id, record):
         print(record['body'])
         return record['messageId']
     
-    # get zone metadata
-    r = route53_client.get_hosted_zone(Id=zone_id)    
+    zone_name = zone_id
 
     event_name = body['detail'].get('eventName')
     if event_name != 'DeleteHostedZone':
+        # get zone metadata
+        r = route53_client.get_hosted_zone(Id=zone_id)    
+        zone_name = r['HostedZone']['Name']
+        
         tags = route53_client.list_tags_for_resource(
             ResourceType='hostedzone',
             ResourceId=zone_id,
@@ -177,7 +180,7 @@ def handle_zones_and_records(zone_id, record):
         'account_id': account_id,
         'msg_type': 'update',
         'zone_id': zone_id,
-        'zone_name': r['HostedZone']['Name'],
+        'zone_name': zone_name,
         'page': 1,
         'truncated': False,
         'payload': body['detail']
