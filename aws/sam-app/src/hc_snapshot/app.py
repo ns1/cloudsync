@@ -15,7 +15,11 @@ snapshot_dest = os.environ.get('SYNC_DEST')
 
 
 def lambda_handler(event, context):
-    process_health_checks()
+    try:
+        process_health_checks()
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 def process_health_checks():
@@ -42,5 +46,5 @@ def handle_health_checks(health_check_list, is_truncated):
     response = dns_post(endpoint, msg, secret_handler)
 
     if response.status_code != 202:
-        print(f"POST to {endpoint} failed with {response.status_code}: {response.content}")
+        raise Exception(f"POST to {endpoint} failed with {response.status_code}: {response.content}")
         
