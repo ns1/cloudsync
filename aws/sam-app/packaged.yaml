@@ -22,8 +22,8 @@ Metadata:
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.4.1'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.1
+    SemanticVersion: '0.4.2'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.2
 Parameters:
   CloudTrailName:
     Type: String
@@ -54,6 +54,7 @@ Parameters:
     Description: The sync s3 bucket when SyncDestination is set to 's3'.
   GatewayEndpoint:
     Type: String
+    Default: https://api.nsone.net/cloudsync/v1beta1
     Description: Cloud sync gateway endpoint.
   NS1APIKey:
     Type: String
@@ -247,6 +248,8 @@ Resources:
           - CreateHealthCheck
           - DeleteHealthCheck
           - UpdateHealthCheck
+          - ChangeCidrCollection
+          - DeleteCidrCollection
           errorCode:
           - exists: false
       Targets:
@@ -280,7 +283,7 @@ Resources:
     Properties:
       LayerName: SharedLayer
       Description: Common functions
-      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/bf956fb1d7dc5307713a4031dd3720d5
+      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6701e579d618d8fe8e280bebd076a195
       CompatibleRuntimes:
       - python3.11
       RetentionPolicy: Delete
@@ -373,7 +376,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: DNSUpdateFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/434af26db43429dc699aecfda8401b86
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/c753572f0518265b42aab880eb32c371
       Handler: app.handler
       Runtime: python3.11
       Timeout: 10
@@ -486,7 +489,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: ConfigureFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/ac59d8dffc9b9342b6c3c723c3d3d92a
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d0c8111607fc9f6a0596ff3d663dec12
       Handler: app.configure_application
       Runtime: python3.11
       Timeout: 300
@@ -563,7 +566,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: SnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/fe2418a273db0b2bd75ada28f0838df6
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/811440e55a87bf202d69eddf347901b9
       Handler: app.lambda_handler
       Runtime: python3.11
       Timeout: 60
@@ -592,7 +595,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: SnapshotListFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/74a526d073b785d17d7ed62ded6512d9
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5a32d78e558e4befbfabd74cf91ea5fe
       Handler: app.lambda_handler
       Runtime: python3.11
       Timeout: 60
@@ -608,6 +611,71 @@ Resources:
       - Ref: SharedLayer
     Metadata:
       SamResourceId: SnapshotListFunction
+  HealthCheckSnapshotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: HCSnapshotFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/0737e3bf7072216ff200ce5c82d88f75
+      Handler: app.lambda_handler
+      Runtime: python3.11
+      Timeout: 60
+      Role:
+        Fn::GetAtt:
+        - HCSnapshotFunctionRole
+        - Arn
+      Layers:
+      - Ref: SharedLayer
+      - Fn::Sub: arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
+      Environment:
+        Variables:
+          ACCOUNT_ID:
+            Ref: AWS::AccountId
+          ENDPOINT:
+            Ref: GatewayEndpoint
+          SYNC_DEST:
+            Ref: SyncDestination
+    Metadata:
+      SamResourceId: HealthCheckSnapshotFunction
+  HCSnapshotFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: HCSnapshotFunctionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: HealthChecksSnapshot
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - route53:ListHealthChecks
+            Resource: '*'
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            Resource:
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/CloudSyncAPIKey-*
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/NS1APIKey-*
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            - secretsmanager:CreateSecret
+            - secretsmanager:UpdateSecret
+            Resource:
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/RefreshToken-*
+            - Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/AccessToken-*
+    Metadata:
+      SamResourceId: HCSnapshotFunctionRole
   SnapshotStateMachineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -635,8 +703,12 @@ Resources:
             - Fn::GetAtt:
               - SnapshotListFunction
               - Arn
+            - Fn::GetAtt:
+              - HealthCheckSnapshotFunction
+              - Arn
             - Fn::Sub: ${SnapshotFunction.Arn}:*
             - Fn::Sub: ${SnapshotListFunction.Arn}:*
+            - Fn::Sub: ${HealthCheckSnapshotFunction.Arn}:*
     Metadata:
       SamResourceId: SnapshotStateMachineRole
   SnapshotStateMachine:
@@ -647,18 +719,51 @@ Resources:
         Fn::GetAtt:
         - SnapshotStateMachineRole
         - Arn
-      Definition:
-        Fn::Transform:
-          Name: AWS::Include
-          Parameters:
-            Location: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/b4087431f741a819f4ca92cb5e75961e
+      DefinitionString:
+        Fn::Sub: "{\n  \"Comment\": \"Snapshot Iterator\",\n  \"StartAt\": \"Health\
+          \ Check Snapshot\",\n  \"States\": {\n    \"Health Check Snapshot\": {\n\
+          \      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:states:::lambda:invoke\"\
+          ,\n      \"OutputPath\": \"$.Payload\",\n      \"Parameters\": {\n     \
+          \   \"Payload.$\": \"$\",\n        \"FunctionName\": \"arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:HCSnapshotFunction:$LATEST\"\
+          \n      },\n      \"Retry\": [\n        {\n          \"ErrorEquals\": [\n\
+          \            \"Lambda.ServiceException\",\n            \"Lambda.AWSLambdaException\"\
+          ,\n            \"Lambda.SdkClientException\",\n            \"Lambda.TooManyRequestsException\"\
+          \n          ],\n          \"IntervalSeconds\": 1,\n          \"MaxAttempts\"\
+          : 3,\n          \"BackoffRate\": 2,\n          \"JitterStrategy\": \"FULL\"\
+          \n        }\n      ],\n      \"Next\": \"List Hosted Zones\"\n    },\n \
+          \   \"Done\": {\n      \"End\": true,\n      \"Type\": \"Pass\"\n    },\n\
+          \    \"List Hosted Zones\": {\n      \"Next\": \"Hosted Zones Snapshot\"\
+          ,\n      \"OutputPath\": \"$.Payload\",\n      \"Parameters\": {\n     \
+          \   \"FunctionName\": \"arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SnapshotListFunction\"\
+          ,\n        \"Payload.$\": \"$\"\n      },\n      \"Resource\": \"arn:aws:states:::lambda:invoke\"\
+          ,\n      \"Retry\": [\n        {\n          \"BackoffRate\": 2,\n      \
+          \    \"ErrorEquals\": [\n            \"Lambda.ServiceException\",\n    \
+          \        \"Lambda.AWSLambdaException\",\n            \"Lambda.SdkClientException\"\
+          ,\n            \"Lambda.TooManyRequestsException\"\n          ],\n     \
+          \     \"IntervalSeconds\": 1,\n          \"MaxAttempts\": 3\n        }\n\
+          \      ],\n      \"Type\": \"Task\"\n    },\n    \"Wait\": {\n      \"Next\"\
+          : \"Hosted Zones Snapshot\",\n      \"Seconds\": 1,\n      \"Type\": \"\
+          Wait\"\n    },\n    \"isTruncated\": {\n      \"Choices\": [\n        {\n\
+          \          \"Next\": \"Wait\",\n          \"Or\": [\n            {\n   \
+          \           \"NumericLessThanPath\": \"$.iterator.zones_count\",\n     \
+          \         \"Variable\": \"$.iterator.current_zone_index\"\n            },\n\
+          \            {\n              \"And\": [\n                {\n          \
+          \        \"IsPresent\": true,\n                  \"Variable\": \"$.iterator.IsTruncated\"\
+          \n                },\n                {\n                  \"BooleanEquals\"\
+          : true,\n                  \"Variable\": \"$.iterator.IsTruncated\"\n  \
+          \              }\n              ]\n            }\n          ]\n        }\n\
+          \      ],\n      \"Default\": \"Done\",\n      \"Type\": \"Choice\"\n  \
+          \  },\n    \"Hosted Zones Snapshot\": {\n      \"Next\": \"isTruncated\"\
+          ,\n      \"Resource\": \"arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SnapshotFunction\"\
+          ,\n      \"ResultPath\": \"$.iterator\",\n      \"Type\": \"Task\"\n   \
+          \ }\n  }\n}\n"
     Metadata:
       SamResourceId: SnapshotStateMachine
   TriggerStateMachineFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: TriggerStateMachineFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/ff3afe3a98f56f7f268d49bb15a82333
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/64f9afa5efd75f1daf12eac1761e81c4
       Handler: app.lambda_handler
       Runtime: python3.11
       Timeout: 60
