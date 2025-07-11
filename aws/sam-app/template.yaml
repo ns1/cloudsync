@@ -596,11 +596,103 @@ Resources:
     Properties:
       StateMachineName: Snapshot-Route53
       RoleArn: !GetAtt SnapshotStateMachineRole.Arn
-      Definition: 
-        'Fn::Transform':
-          Name: AWS::Include
-          Parameters:
-            Location: ./state_machine_def.json
+      DefinitionString: 
+        !Sub |
+          {
+            "Comment": "Snapshot Iterator",
+            "StartAt": "Health Check Snapshot",
+            "States": {
+              "Health Check Snapshot": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::lambda:invoke",
+                "OutputPath": "$.Payload",
+                "Parameters": {
+                  "Payload.$": "$",
+                  "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:HCSnapshotFunction:$LATEST"
+                },
+                "Retry": [
+                  {
+                    "ErrorEquals": [
+                      "Lambda.ServiceException",
+                      "Lambda.AWSLambdaException",
+                      "Lambda.SdkClientException",
+                      "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
+                  }
+                ],
+                "Next": "List Hosted Zones"
+              },
+              "Done": {
+                "End": true,
+                "Type": "Pass"
+              },
+              "List Hosted Zones": {
+                "Next": "Hosted Zones Snapshot",
+                "OutputPath": "$.Payload",
+                "Parameters": {
+                  "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SnapshotListFunction",
+                  "Payload.$": "$"
+                },
+                "Resource": "arn:aws:states:::lambda:invoke",
+                "Retry": [
+                  {
+                    "BackoffRate": 2,
+                    "ErrorEquals": [
+                      "Lambda.ServiceException",
+                      "Lambda.AWSLambdaException",
+                      "Lambda.SdkClientException",
+                      "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3
+                  }
+                ],
+                "Type": "Task"
+              },
+              "Wait": {
+                "Next": "Hosted Zones Snapshot",
+                "Seconds": 1,
+                "Type": "Wait"
+              },
+              "isTruncated": {
+                "Choices": [
+                  {
+                    "Next": "Wait",
+                    "Or": [
+                      {
+                        "NumericLessThanPath": "$.iterator.zones_count",
+                        "Variable": "$.iterator.current_zone_index"
+                      },
+                      {
+                        "And": [
+                          {
+                            "IsPresent": true,
+                            "Variable": "$.iterator.IsTruncated"
+                          },
+                          {
+                            "BooleanEquals": true,
+                            "Variable": "$.iterator.IsTruncated"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "Default": "Done",
+                "Type": "Choice"
+              },
+              "Hosted Zones Snapshot": {
+                "Next": "isTruncated",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SnapshotFunction",
+                "ResultPath": "$.iterator",
+                "Type": "Task"
+              }
+            }
+          }
 
   TriggerStateMachineFunction:
     Type: AWS::Serverless::Function
