@@ -26,6 +26,7 @@ Metadata:
 Parameters:
   CloudTrailName:
     Type: String
+<<<<<<< Updated upstream
     Default: CloudSyncTrail
   EnableZoneOmission:
     Type: String
@@ -50,6 +51,9 @@ Parameters:
     Type: String
     Default: https://api.nsone.net/cloudsync/v1beta1
     Description: Cloud sync gateway endpoint.
+=======
+    Default: NS1CloudSyncTrail
+>>>>>>> Stashed changes
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
@@ -325,11 +329,11 @@ Resources:
         Role: !GetAtt DNSUpdateFunctionRole.Arn
         Environment:
           Variables:
-            ENDPOINT: !Ref GatewayEndpoint
+            ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
             ACCOUNT_ID: !Ref AWS::AccountId
-            ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
-            ZONE_SYNC_TAG: !Ref ZoneSyncTag
-            SYNC_DEST: !Ref SyncDestination
+            ENABLE_ZONE_OMIT: true
+            ZONE_SYNC_TAG: NS1CloudSync
+            SYNC_DEST: ns1
             STATE_MACHINE_ARN: !GetAtt SnapshotStateMachine.Arn
         Layers:
           - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
@@ -481,11 +485,11 @@ Resources:
         - !Ref SharedLayer
       Environment:
           Variables:
-            ENDPOINT: !Ref GatewayEndpoint
-            ENABLE_ZONE_OMIT: !Ref EnableZoneOmission
-            ZONE_OMIT_TAG: !Ref ZoneSyncTag
-            SYNC_DEST: !Ref SyncDestination
-            SYNC_BUCKET: !Ref SyncBucket
+            ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
+            ENABLE_ZONE_OMIT: true
+            ZONE_OMIT_TAG: NS1CloudSync
+            SYNC_DEST: ns1
+            SYNC_BUCKET: ""
 
   SnapshotListFunction:
     Type: AWS::Serverless::Function
@@ -521,8 +525,8 @@ Resources:
       Environment:
           Variables:
             ACCOUNT_ID: !Ref AWS::AccountId
-            ENDPOINT: !Ref GatewayEndpoint
-            SYNC_DEST: !Ref SyncDestination
+            ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
+            SYNC_DEST: ns1
 
   HCSnapshotFunctionRole:
     Type: AWS::IAM::Role
