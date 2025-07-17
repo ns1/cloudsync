@@ -25,35 +25,7 @@ Metadata:
 
 Parameters:
   CloudTrailName:
-    Type: String
-<<<<<<< Updated upstream
-    Default: CloudSyncTrail
-  EnableZoneOmission:
-    Type: String
-    Default: "true"
-    AllowedValues: ["true", "false"]
-    Description: Indicate whether you would like to be able to omit certain zones from syncing. Enabled by default.
-  ZoneSyncTag:
-    Type: String
-    Default: CloudSync
-    MaxLength: 128
-    Description: The tag that will indicate which zones are synced.
-  SyncDestination:
-    Type: String
-    Default: ns1
-    Description: The sync destination for cloudsync.
-    AllowedValues: [ns1, s3]
-  SyncBucket:
-    Type: String
-    Default: ""
-    Description: The sync s3 bucket when SyncDestination is set to 's3'.
-  GatewayEndpoint:
-    Type: String
-    Default: https://api.nsone.net/cloudsync/v1beta1
-    Description: Cloud sync gateway endpoint.
-=======
     Default: NS1CloudSyncTrail
->>>>>>> Stashed changes
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
