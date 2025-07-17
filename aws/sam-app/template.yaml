@@ -25,6 +25,7 @@ Metadata:
 
 Parameters:
   CloudTrailName:
+    Type: String
     Default: NS1CloudSyncTrail
   NS1APIKey:
     Type: String
