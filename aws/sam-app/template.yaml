@@ -33,15 +33,15 @@ Parameters:
 
 
 Resources:
-  DeadLetterQueue:
+  UpdatesDeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: Route53_Snapshot_DLQ
+      QueueName: CloudSyncUpdatesDLQueue
 
   DNSUpdateQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: Route53_Snapshot
+      QueueName: CloudSyncUpdatesQueue
 
   # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
@@ -214,7 +214,7 @@ Resources:
   SharedLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: SharedLayer
+      LayerName: CloudSyncSharedLayer
       Description: Common functions
       ContentUri: ./src/shared_layer
       CompatibleRuntimes:
@@ -260,7 +260,7 @@ Resources:
                 Action:
                   - sqs:SendMessage
                   - sqs:GetQueueAttributes
-                Resource: !GetAtt DeadLetterQueue.Arn
+                Resource: !GetAtt UpdatesDeadLetterQueue.Arn
               - Effect: Allow
                 Action:
                   - sqs:ReceiveMessage
@@ -294,7 +294,7 @@ Resources:
   DNSUpdateFunction:
       Type: AWS::Serverless::Function
       Properties:
-        FunctionName: DNSUpdateFunction
+        FunctionName: CloudSyncDNSUpdateFunction
         CodeUri: ./src/dns_updates
         Handler: app.handler
         Runtime: python3.11
@@ -315,7 +315,7 @@ Resources:
           MaximumRetryAttempts: 2
         DeadLetterQueue:
           Type: SQS
-          TargetArn: !GetAtt DeadLetterQueue.Arn
+          TargetArn: !GetAtt UpdatesDeadLetterQueue.Arn
         Events:
           UpdateQueueEvent:
             Type: SQS
@@ -382,7 +382,7 @@ Resources:
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: ConfigureFunction
+      FunctionName: CloudSyncConfigureFunction
       CodeUri: src/configure
       Handler: app.configure_application
       Runtime: python3.11
@@ -405,7 +405,7 @@ Resources:
   SnapshotFunctionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: SnapshotFunctionRole
+      RoleName: CloudSyncSnapshotFunctionRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -419,7 +419,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: SnapshotFunctionRole
+        - PolicyName: CloudSyncSnapshotFunctionRole
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -447,7 +447,7 @@ Resources:
   SnapshotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: SnapshotFunction
+      FunctionName: CloudSyncSnapshotFunction
       CodeUri: ./src/dns_snapshot
       Handler: app.lambda_handler
       Runtime: python3.11
@@ -467,7 +467,7 @@ Resources:
   SnapshotListFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: SnapshotListFunction
+      FunctionName: CloudSyncSnapshotListFunction
       CodeUri: ./src/dns_snapshot_list
       Handler: app.lambda_handler
       Runtime: python3.11
@@ -486,7 +486,7 @@ Resources:
   HealthCheckSnapshotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: HCSnapshotFunction
+      FunctionName: CloudSyncHCSnapshotFunction
       CodeUri: ./src/hc_snapshot
       Handler: app.lambda_handler
       Runtime: python3.11
@@ -504,7 +504,7 @@ Resources:
   HCSnapshotFunctionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: HCSnapshotFunctionRole
+      RoleName: CloudSyncHCSnapshotFunctionRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -518,7 +518,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: HealthChecksSnapshot
+        - PolicyName: CloudSyncHealthChecksSnapshot
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -544,7 +544,7 @@ Resources:
   SnapshotStateMachineRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: SnapshotStateMachineRole
+      RoleName: CloudSyncSnapshotStateMachineRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -555,7 +555,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: SnapshotInvokePolicy
+        - PolicyName: CloudSyncSnapshotInvokePolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -572,7 +572,7 @@ Resources:
   SnapshotStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      StateMachineName: Snapshot-Route53
+      StateMachineName: CloudSyncSnapshot-Route53
       RoleArn: !GetAtt SnapshotStateMachineRole.Arn
       DefinitionString: 
         !Sub |
@@ -675,7 +675,7 @@ Resources:
   TriggerStateMachineFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: TriggerStateMachineFunction
+      FunctionName: CloudSyncTriggerStateMachineFunction
       CodeUri: ./src/trigger_state_machine
       Handler: app.lambda_handler
       Runtime: python3.11
