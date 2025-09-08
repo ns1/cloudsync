@@ -163,9 +163,14 @@ def handle_zones_and_records(zone_id, record):
                     )
                     
                     if response['ResponseMetadata']['HTTPStatusCode'] != 200:
-                        print(f"list_hosted_zones failed with status code: {response['ResponseMetadata']['HTTPStatusCode']}. {zones_response}")
-                        raise Exception
-
+                        raise RuntimeError(
+                            f"Step Function failed "
+                            f"(status {response['ResponseMetadata']['HTTPStatusCode']}). "
+                            f"StateMachineArn: {os.environ['STATE_MACHINE_ARN']}, "
+                            f"Input: {r['HostedZone']['Name']}, "
+                            f"Response: {response}"
+                        )
+                        
                     return
 
             if zone_sync_tag not in [t['Key'] for t in tags]:

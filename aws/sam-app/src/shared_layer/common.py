@@ -143,6 +143,10 @@ def get_tokens_using_api_key(token_endpoint, secret_handler):
     # request tokens from gateway 
     token_res = requests.post(token_endpoint, headers=headers)
     if token_res.status_code != 200:
-        raise Exception(f"Failed to retrieve tokens using API Key, status code: {token_res.status_code}")
-
+        raise Exception(
+            f"Token request failed (status {token_res.status_code}). "
+            f"Endpoint: {token_endpoint}. "
+            f"Response: {token_res.text}"
+        )
+        
     return token_res

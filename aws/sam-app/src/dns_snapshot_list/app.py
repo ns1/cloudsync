@@ -2,15 +2,18 @@ import boto3
 
 from common import get_tags_for_zones
 
+route53_client = boto3.client('route53')
+
 def lambda_handler(event, context):
-    route53_client = boto3.client('route53')
-
+    # TODO: is pagination appropriate here? 
     zones_response = route53_client.list_hosted_zones()
-
     if zones_response['ResponseMetadata']['HTTPStatusCode'] != 200:
-        print(f"list_hosted_zones failed with status code: {zones_response['ResponseMetadata']['HTTPStatusCode']}. {zones_response}")
-        raise Exception
-
+        raise RuntimeError(
+            f"list_hosted_zones failed "
+            f"(status {zones_response['ResponseMetadata']['HTTPStatusCode']}). "
+            f"Response: {zones_response}"
+        )
+        
     zones = zones_response['HostedZones']
     zone_ids = [z['Id'].split('/')[-1] for z in zones]
 
@@ -26,6 +29,7 @@ def lambda_handler(event, context):
     
     tags = get_tags_for_zones(route53_client, zone_ids)
 
+    # state machine input
     return {
         'hosted_zones': zones,
         'zones_count': len(zones),

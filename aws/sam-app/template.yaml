@@ -4,7 +4,8 @@ Description: This serverless application publishes AWS Route 53 events to NS1 Co
 
 Globals:
   Function:
-    Timeout: 10
+    Timeout: 60
+    Runtime: python3.11
     Tracing: Active
   Api:
     TracingEnabled: True
@@ -239,7 +240,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: CloudSyncLambdaExecRole
+        - PolicyName: CloudSyncUpdateFunctionPolicy
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -297,8 +298,6 @@ Resources:
         FunctionName: CloudSyncDNSUpdateFunction
         CodeUri: ./src/dns_updates
         Handler: app.handler
-        Runtime: python3.11
-        Timeout: 10
         Role: !GetAtt DNSUpdateFunctionRole.Arn
         Environment:
           Variables:
@@ -313,9 +312,6 @@ Resources:
           - !Ref SharedLayer
         EventInvokeConfig:
           MaximumRetryAttempts: 2
-        DeadLetterQueue:
-          Type: SQS
-          TargetArn: !GetAtt UpdatesDeadLetterQueue.Arn
         Events:
           UpdateQueueEvent:
             Type: SQS
@@ -339,7 +335,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: CloudSyncConfigFunctionRole
+        - PolicyName: CloudSyncConfigFunctionPolicy
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -385,7 +381,6 @@ Resources:
       FunctionName: CloudSyncConfigureFunction
       CodeUri: src/configure
       Handler: app.configure_application
-      Runtime: python3.11
       Timeout: 300
       Role: !GetAtt ConfigureFunctionRole.Arn
       Layers:
@@ -419,7 +414,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: CloudSyncSnapshotFunctionRole
+        - PolicyName: CloudSyncSnapshotFunctionPolicy
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -450,8 +445,6 @@ Resources:
       FunctionName: CloudSyncSnapshotFunction
       CodeUri: ./src/dns_snapshot
       Handler: app.lambda_handler
-      Runtime: python3.11
-      Timeout: 60
       Role: !GetAtt SnapshotFunctionRole.Arn
       Layers:
         - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
@@ -470,8 +463,6 @@ Resources:
       FunctionName: CloudSyncSnapshotListFunction
       CodeUri: ./src/dns_snapshot_list
       Handler: app.lambda_handler
-      Runtime: python3.11
-      Timeout: 60
       Policies:
         - Version: "2012-10-17"
           Statement:
@@ -489,8 +480,6 @@ Resources:
       FunctionName: CloudSyncHCSnapshotFunction
       CodeUri: ./src/hc_snapshot
       Handler: app.lambda_handler
-      Runtime: python3.11
-      Timeout: 60
       Role: !GetAtt HCSnapshotFunctionRole.Arn
       Layers:
         - !Ref SharedLayer
@@ -518,7 +507,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: CloudSyncHealthChecksSnapshot
+        - PolicyName: CloudSyncHealthChecksSnapshotPolicy
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -539,7 +528,6 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/RefreshToken-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:CloudSync/AccessToken-*'
-
                   
   SnapshotStateMachineRole:
     Type: AWS::IAM::Role
@@ -555,7 +543,7 @@ Resources:
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: CloudSyncSnapshotInvokePolicy
+        - PolicyName: CloudSyncSnapshotStateMachinePolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -572,7 +560,7 @@ Resources:
   SnapshotStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      StateMachineName: CloudSyncSnapshot-Route53
+      StateMachineName: CloudSyncSnapshotStateMachine
       RoleArn: !GetAtt SnapshotStateMachineRole.Arn
       DefinitionString: 
         !Sub |
@@ -586,7 +574,7 @@ Resources:
                 "OutputPath": "$.Payload",
                 "Parameters": {
                   "Payload.$": "$",
-                  "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:HCSnapshotFunction:$LATEST"
+                  "FunctionName": "${HealthCheckSnapshotFunction.Arn}"
                 },
                 "Retry": [
                   {
@@ -612,7 +600,7 @@ Resources:
                 "Next": "Hosted Zones Snapshot",
                 "OutputPath": "$.Payload",
                 "Parameters": {
-                  "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SnapshotListFunction",
+                  "FunctionName": "${SnapshotListFunction.Arn}",
                   "Payload.$": "$"
                 },
                 "Resource": "arn:aws:states:::lambda:invoke",
@@ -665,7 +653,7 @@ Resources:
               },
               "Hosted Zones Snapshot": {
                 "Next": "isTruncated",
-                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SnapshotFunction",
+                "Resource": "${SnapshotFunction.Arn}",
                 "ResultPath": "$.iterator",
                 "Type": "Task"
               }
@@ -678,8 +666,6 @@ Resources:
       FunctionName: CloudSyncTriggerStateMachineFunction
       CodeUri: ./src/trigger_state_machine
       Handler: app.lambda_handler
-      Runtime: python3.11
-      Timeout: 60
       Policies:
         - Version: "2012-10-17"
           Statement:
@@ -690,7 +676,7 @@ Resources:
         Variables:
           STATE_MACHINE_ARN: !GetAtt SnapshotStateMachine.Arn
 
-  TriggerSnapshotCR:
+  TriggerSnapshotCustomResource:
     Type: AWS::CloudFormation::CustomResource
     Properties:
       ServiceToken: !GetAtt TriggerStateMachineFunction.Arn
