@@ -17,7 +17,7 @@ snapshot_dest = os.environ.get('SYNC_DEST')
 def lambda_handler(event, context):
     try:
         process_health_checks()
-        return {"status": "ok"}
+        return {"status": "ok", **event}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
