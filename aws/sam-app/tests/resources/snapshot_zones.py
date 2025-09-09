@@ -120,7 +120,7 @@ OMIT_ZONES = {
     "tags": {
         "Z014482635TU0BYFTNNCH": {
             'ENABLE_ZONE_OMIT': 'True',
-            'ZONE_OMIT_TAG': 'CloudSync',
+            'ZONE_SYNC_TAG': 'CloudSync',
             'Name': "foo12"
         },
     },

@@ -9,7 +9,7 @@ from secret_handler import SecretHandler
 
 endpoint = os.environ.get('ENDPOINT')
 zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
-zone_sync_tag = os.environ.get('ZONE_SYNC_TAG', 'CloudSync')
+zone_sync_tag = os.environ.get('ZONE_SYNC_TAG', 'NS1CloudSync')
 account_id = os.environ.get('ACCOUNT_ID')
 snapshot_dest = os.environ.get('SYNC_DEST')
 

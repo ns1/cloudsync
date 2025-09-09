@@ -38,7 +38,7 @@ Parameters:
       from syncing. Enabled by default.
   ZoneSyncTag:
     Type: String
-    Default: CloudSync
+    Default: NS1CloudSync
     MaxLength: 128
     Description: The tag that will indicate which zones are synced.
   SyncDestination:
@@ -583,7 +583,7 @@ Resources:
             Ref: GatewayEndpoint
           ENABLE_ZONE_OMIT:
             Ref: EnableZoneOmission
-          ZONE_OMIT_TAG:
+          ZONE_SYNC_TAG:
             Ref: ZoneSyncTag
           SYNC_DEST:
             Ref: SyncDestination

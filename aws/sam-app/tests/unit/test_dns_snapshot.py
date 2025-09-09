@@ -15,7 +15,7 @@ class TestLambdaHandler(unittest.TestCase):
     @patch.dict(os.environ, {
         'ENDPOINT': 'http://api.nszero.com/cloudsync/v1beta1',
         'ENABLE_ZONE_OMIT': 'true',
-        'ZONE_OMIT_TAG': 'CloudSync',
+        'ZONE_SYNC_TAG': 'CloudSync',
         'SYNC_DEST': '',
     })
     @patch('common.snapshot_zone')
@@ -68,7 +68,7 @@ class TestLambdaHandler(unittest.TestCase):
     @patch.dict(os.environ, {
         'ENDPOINT': 'http://api.nszero.com/cloudsync/v1beta1',
         'ENABLE_ZONE_OMIT': 'True',
-        'ZONE_OMIT_TAG': 'CloudSync',
+        'ZONE_SYNC_TAG': 'CloudSync',
         'SYNC_DEST': '',
 
 

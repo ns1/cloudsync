@@ -298,6 +298,7 @@ Resources:
         FunctionName: CloudSyncDNSUpdateFunction
         CodeUri: ./src/dns_updates
         Handler: app.handler
+        Timeout: 10
         Role: !GetAtt DNSUpdateFunctionRole.Arn
         Environment:
           Variables:
@@ -453,7 +454,7 @@ Resources:
           Variables:
             ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
             ENABLE_ZONE_OMIT: true
-            ZONE_OMIT_TAG: NS1CloudSync
+            ZONE_SYNC_TAG: NS1CloudSync
             SYNC_DEST: ns1
             SYNC_BUCKET: ""
 
