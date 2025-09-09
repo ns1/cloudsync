@@ -9,7 +9,7 @@ from secret_handler import SecretHandler
 
 endpoint = os.environ.get('ENDPOINT')
 zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
-zone_sync_tag = os.environ.get('ZONE_SYNC_TAG', 'CloudSync')
+zone_sync_tag = os.environ.get('ZONE_SYNC_TAG', 'NS1CloudSync')
 account_id = os.environ.get('ACCOUNT_ID')
 snapshot_dest = os.environ.get('SYNC_DEST')
 
@@ -163,9 +163,14 @@ def handle_zones_and_records(zone_id, record):
                     )
                     
                     if response['ResponseMetadata']['HTTPStatusCode'] != 200:
-                        print(f"list_hosted_zones failed with status code: {response['ResponseMetadata']['HTTPStatusCode']}. {zones_response}")
-                        raise Exception
-
+                        raise RuntimeError(
+                            f"Step Function failed "
+                            f"(status {response['ResponseMetadata']['HTTPStatusCode']}). "
+                            f"StateMachineArn: {os.environ['STATE_MACHINE_ARN']}, "
+                            f"Input: {r['HostedZone']['Name']}, "
+                            f"Response: {response}"
+                        )
+                        
                     return
 
             if zone_sync_tag not in [t['Key'] for t in tags]:

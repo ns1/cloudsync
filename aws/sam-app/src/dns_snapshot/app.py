@@ -9,14 +9,13 @@ route53_client = boto3.client('route53')
 secret_handler = SecretHandler()
 
 zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
-zone_sync_tag = os.environ.get('ZONE_SYNC_TAG', 'CloudSync')
+zone_sync_tag = os.environ.get('ZONE_SYNC_TAG', 'NS1CloudSync')
 snapshot_dest = os.environ.get('SYNC_DEST')
 s3_bucket_name = os.environ.get('SYNC_BUCKET')
 
 def lambda_handler(event, context):
     if (endpoint := os.environ.get('ENDPOINT')) is None:
-        print("ENDPOINT env variable not set")
-        raise Exception
+        raise Exception("ENDPOINT env variable not set")
 
     # extract current zone info
     current_zone_index = event['iterator']['current_zone_index'] if 'iterator' in event else event['current_zone_index']
