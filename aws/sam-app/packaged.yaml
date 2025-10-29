@@ -3,7 +3,8 @@ Transform: AWS::Serverless-2016-10-31
 Description: This serverless application publishes AWS Route 53 events to NS1 Connect.
 Globals:
   Function:
-    Timeout: 10
+    Timeout: 60
+    Runtime: python3.11
     Tracing: Active
   Api:
     TracingEnabled: true
@@ -22,54 +23,26 @@ Metadata:
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.4.2'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.2
+    SemanticVersion: '0.4.3'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.3
 Parameters:
   CloudTrailName:
     Type: String
-    Default: CloudSyncTrail
-  EnableZoneOmission:
-    Type: String
-    Default: 'true'
-    AllowedValues:
-    - 'true'
-    - 'false'
-    Description: Indicate whether you would like to be able to omit certain zones
-      from syncing. Enabled by default.
-  ZoneSyncTag:
-    Type: String
-    Default: NS1CloudSync
-    MaxLength: 128
-    Description: The tag that will indicate which zones are synced.
-  SyncDestination:
-    Type: String
-    Default: ns1
-    Description: The sync destination for cloudsync.
-    AllowedValues:
-    - ns1
-    - s3
-  SyncBucket:
-    Type: String
-    Default: ''
-    Description: The sync s3 bucket when SyncDestination is set to 's3'.
-  GatewayEndpoint:
-    Type: String
-    Default: https://api.nsone.net/cloudsync/v1beta1
-    Description: Cloud sync gateway endpoint.
+    Default: NS1CloudSyncTrail
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
 Resources:
-  DeadLetterQueue:
+  UpdatesDeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: Route53_Snapshot_DLQ
+      QueueName: CloudSyncUpdatesDLQueue
     Metadata:
-      SamResourceId: DeadLetterQueue
+      SamResourceId: UpdatesDeadLetterQueue
   DNSUpdateQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: Route53_Snapshot
+      QueueName: CloudSyncUpdatesQueue
     Metadata:
       SamResourceId: DNSUpdateQueue
   TrailKMSKey:
@@ -281,9 +254,9 @@ Resources:
   SharedLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: SharedLayer
+      LayerName: CloudSyncSharedLayer
       Description: Common functions
-      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6701e579d618d8fe8e280bebd076a195
+      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5259f10710c76d94cb2ee04c48a9f647
       CompatibleRuntimes:
       - python3.11
       RetentionPolicy: Delete
@@ -306,7 +279,7 @@ Resources:
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-      - PolicyName: CloudSyncLambdaExecRole
+      - PolicyName: CloudSyncUpdateFunctionPolicy
         PolicyDocument:
           Statement:
           - Effect: Allow
@@ -329,7 +302,7 @@ Resources:
             - sqs:GetQueueAttributes
             Resource:
               Fn::GetAtt:
-              - DeadLetterQueue
+              - UpdatesDeadLetterQueue
               - Arn
           - Effect: Allow
             Action:
@@ -375,10 +348,9 @@ Resources:
   DNSUpdateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: DNSUpdateFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/c753572f0518265b42aab880eb32c371
+      FunctionName: CloudSyncDNSUpdateFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/f2d2233631732cab9d8f4a01e3a0ae2b
       Handler: app.handler
-      Runtime: python3.11
       Timeout: 10
       Role:
         Fn::GetAtt:
@@ -386,16 +358,12 @@ Resources:
         - Arn
       Environment:
         Variables:
-          ENDPOINT:
-            Ref: GatewayEndpoint
+          ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
           ACCOUNT_ID:
             Ref: AWS::AccountId
-          ENABLE_ZONE_OMIT:
-            Ref: EnableZoneOmission
-          ZONE_SYNC_TAG:
-            Ref: ZoneSyncTag
-          SYNC_DEST:
-            Ref: SyncDestination
+          ENABLE_ZONE_OMIT: true
+          ZONE_SYNC_TAG: NS1CloudSync
+          SYNC_DEST: ns1
           STATE_MACHINE_ARN:
             Fn::GetAtt:
             - SnapshotStateMachine
@@ -405,12 +373,6 @@ Resources:
       - Ref: SharedLayer
       EventInvokeConfig:
         MaximumRetryAttempts: 2
-      DeadLetterQueue:
-        Type: SQS
-        TargetArn:
-          Fn::GetAtt:
-          - DeadLetterQueue
-          - Arn
       Events:
         UpdateQueueEvent:
           Type: SQS
@@ -438,7 +400,7 @@ Resources:
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-      - PolicyName: CloudSyncConfigFunctionRole
+      - PolicyName: CloudSyncConfigFunctionPolicy
         PolicyDocument:
           Statement:
           - Effect: Allow
@@ -488,10 +450,9 @@ Resources:
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: ConfigureFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d0c8111607fc9f6a0596ff3d663dec12
+      FunctionName: CloudSyncConfigureFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/78e4892febfb92ee90068e2a5345e9a4
       Handler: app.configure_application
-      Runtime: python3.11
       Timeout: 300
       Role:
         Fn::GetAtt:
@@ -522,7 +483,7 @@ Resources:
   SnapshotFunctionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: SnapshotFunctionRole
+      RoleName: CloudSyncSnapshotFunctionRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -536,7 +497,7 @@ Resources:
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-      - PolicyName: SnapshotFunctionRole
+      - PolicyName: CloudSyncSnapshotFunctionPolicy
         PolicyDocument:
           Statement:
           - Effect: Allow
@@ -565,11 +526,9 @@ Resources:
   SnapshotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: SnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/811440e55a87bf202d69eddf347901b9
+      FunctionName: CloudSyncSnapshotFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5a8681f81fb4524f71d0053927fb4451
       Handler: app.lambda_handler
-      Runtime: python3.11
-      Timeout: 60
       Role:
         Fn::GetAtt:
         - SnapshotFunctionRole
@@ -579,26 +538,19 @@ Resources:
       - Ref: SharedLayer
       Environment:
         Variables:
-          ENDPOINT:
-            Ref: GatewayEndpoint
-          ENABLE_ZONE_OMIT:
-            Ref: EnableZoneOmission
-          ZONE_SYNC_TAG:
-            Ref: ZoneSyncTag
-          SYNC_DEST:
-            Ref: SyncDestination
-          SYNC_BUCKET:
-            Ref: SyncBucket
+          ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
+          ENABLE_ZONE_OMIT: true
+          ZONE_SYNC_TAG: NS1CloudSync
+          SYNC_DEST: ns1
+          SYNC_BUCKET: ''
     Metadata:
       SamResourceId: SnapshotFunction
   SnapshotListFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: SnapshotListFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5a32d78e558e4befbfabd74cf91ea5fe
+      FunctionName: CloudSyncSnapshotListFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6346f73355fe42e74b1db62680ff9cd4
       Handler: app.lambda_handler
-      Runtime: python3.11
-      Timeout: 60
       Policies:
       - Version: '2012-10-17'
         Statement:
@@ -614,11 +566,9 @@ Resources:
   HealthCheckSnapshotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: HCSnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/0737e3bf7072216ff200ce5c82d88f75
+      FunctionName: CloudSyncHCSnapshotFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/4ffafff6ee1fa732115d44bd5b281671
       Handler: app.lambda_handler
-      Runtime: python3.11
-      Timeout: 60
       Role:
         Fn::GetAtt:
         - HCSnapshotFunctionRole
@@ -630,16 +580,14 @@ Resources:
         Variables:
           ACCOUNT_ID:
             Ref: AWS::AccountId
-          ENDPOINT:
-            Ref: GatewayEndpoint
-          SYNC_DEST:
-            Ref: SyncDestination
+          ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
+          SYNC_DEST: ns1
     Metadata:
       SamResourceId: HealthCheckSnapshotFunction
   HCSnapshotFunctionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: HCSnapshotFunctionRole
+      RoleName: CloudSyncHCSnapshotFunctionRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -653,7 +601,7 @@ Resources:
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-      - PolicyName: HealthChecksSnapshot
+      - PolicyName: CloudSyncHealthChecksSnapshotPolicy
         PolicyDocument:
           Statement:
           - Effect: Allow
@@ -679,7 +627,7 @@ Resources:
   SnapshotStateMachineRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: SnapshotStateMachineRole
+      RoleName: CloudSyncSnapshotStateMachineRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -690,7 +638,7 @@ Resources:
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-      - PolicyName: SnapshotInvokePolicy
+      - PolicyName: CloudSyncSnapshotStateMachinePolicy
         PolicyDocument:
           Version: '2012-10-17'
           Statement:
@@ -714,7 +662,7 @@ Resources:
   SnapshotStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      StateMachineName: Snapshot-Route53
+      StateMachineName: CloudSyncSnapshotStateMachine
       RoleArn:
         Fn::GetAtt:
         - SnapshotStateMachineRole
@@ -724,7 +672,7 @@ Resources:
           \ Check Snapshot\",\n  \"States\": {\n    \"Health Check Snapshot\": {\n\
           \      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:states:::lambda:invoke\"\
           ,\n      \"OutputPath\": \"$.Payload\",\n      \"Parameters\": {\n     \
-          \   \"Payload.$\": \"$\",\n        \"FunctionName\": \"arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:HCSnapshotFunction:$LATEST\"\
+          \   \"Payload.$\": \"$\",\n        \"FunctionName\": \"${HealthCheckSnapshotFunction.Arn}\"\
           \n      },\n      \"Retry\": [\n        {\n          \"ErrorEquals\": [\n\
           \            \"Lambda.ServiceException\",\n            \"Lambda.AWSLambdaException\"\
           ,\n            \"Lambda.SdkClientException\",\n            \"Lambda.TooManyRequestsException\"\
@@ -734,8 +682,8 @@ Resources:
           \   \"Done\": {\n      \"End\": true,\n      \"Type\": \"Pass\"\n    },\n\
           \    \"List Hosted Zones\": {\n      \"Next\": \"Hosted Zones Snapshot\"\
           ,\n      \"OutputPath\": \"$.Payload\",\n      \"Parameters\": {\n     \
-          \   \"FunctionName\": \"arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SnapshotListFunction\"\
-          ,\n        \"Payload.$\": \"$\"\n      },\n      \"Resource\": \"arn:aws:states:::lambda:invoke\"\
+          \   \"FunctionName\": \"${SnapshotListFunction.Arn}\",\n        \"Payload.$\"\
+          : \"$\"\n      },\n      \"Resource\": \"arn:aws:states:::lambda:invoke\"\
           ,\n      \"Retry\": [\n        {\n          \"BackoffRate\": 2,\n      \
           \    \"ErrorEquals\": [\n            \"Lambda.ServiceException\",\n    \
           \        \"Lambda.AWSLambdaException\",\n            \"Lambda.SdkClientException\"\
@@ -754,19 +702,16 @@ Resources:
           \              }\n              ]\n            }\n          ]\n        }\n\
           \      ],\n      \"Default\": \"Done\",\n      \"Type\": \"Choice\"\n  \
           \  },\n    \"Hosted Zones Snapshot\": {\n      \"Next\": \"isTruncated\"\
-          ,\n      \"Resource\": \"arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SnapshotFunction\"\
-          ,\n      \"ResultPath\": \"$.iterator\",\n      \"Type\": \"Task\"\n   \
-          \ }\n  }\n}\n"
+          ,\n      \"Resource\": \"${SnapshotFunction.Arn}\",\n      \"ResultPath\"\
+          : \"$.iterator\",\n      \"Type\": \"Task\"\n    }\n  }\n}\n"
     Metadata:
       SamResourceId: SnapshotStateMachine
   TriggerStateMachineFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: TriggerStateMachineFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/64f9afa5efd75f1daf12eac1761e81c4
+      FunctionName: CloudSyncTriggerStateMachineFunction
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5ebd0208ef3d8ebcc2878a9c97483b11
       Handler: app.lambda_handler
-      Runtime: python3.11
-      Timeout: 60
       Policies:
       - Version: '2012-10-17'
         Statement:
@@ -784,7 +729,7 @@ Resources:
             - Arn
     Metadata:
       SamResourceId: TriggerStateMachineFunction
-  TriggerSnapshotCR:
+  TriggerSnapshotCustomResource:
     Type: AWS::CloudFormation::CustomResource
     Properties:
       ServiceToken:
@@ -793,4 +738,4 @@ Resources:
         - Arn
     DependsOn: SnapshotStateMachine
     Metadata:
-      SamResourceId: TriggerSnapshotCR
+      SamResourceId: TriggerSnapshotCustomResource
