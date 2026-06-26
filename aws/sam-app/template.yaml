@@ -25,12 +25,26 @@ Metadata:
     SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.5
 
 Parameters:
+  CreateCloudTrail:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Set to "true" only if your AWS account does NOT already have an active
+      multi-region CloudTrail trail with IncludeGlobalServiceEvents enabled.
+      Most accounts already have a default trail; leave as "false" to avoid
+      creating a duplicate trail and incurring unnecessary charges.
   CloudTrailName:
     Type: String
     Default: NS1CloudSyncTrail
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
+
+Conditions:
+  ShouldCreateTrail: !Equals [!Ref CreateCloudTrail, "true"]
 
 Resources:
   Route53NSUpdaterRole:
@@ -71,7 +85,8 @@ Resources:
   # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
     Type: AWS::KMS::Key
-    Properties: 
+    Condition: ShouldCreateTrail
+    Properties:
       Enabled: true
       KeySpec: SYMMETRIC_DEFAULT
       KeyUsage: ENCRYPT_DECRYPT
@@ -147,6 +162,7 @@ Resources:
   # S3 bucket for CloudTrail.
   TrailS3Bucket:
     Type: AWS::S3::Bucket
+    Condition: ShouldCreateTrail
     DeletionPolicy: Delete
     Properties:
       BucketName: !Join ['-', ['cloudsync-trail-bucket', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
@@ -154,6 +170,7 @@ Resources:
   # Bucket policy to allow CloudTrail access to the bucket.
   TrailBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldCreateTrail
     Properties:
       Bucket: !Ref TrailS3Bucket
       PolicyDocument:
@@ -180,9 +197,12 @@ Resources:
               StringEquals:
                 s3:x-amz-acl: bucket-owner-full-control
 
-  # There must be a trail in order for EventBridge to capture events from Route 53.
+  # A trail is only created when no existing trail is present in the account.
+  # EventBridge receives Route 53 management events from any active trail, so the
+  # default AWS trail (management-events) is sufficient for most accounts.
   Trail:
     Type: AWS::CloudTrail::Trail
+    Condition: ShouldCreateTrail
     DependsOn: TrailBucketPolicy
     Properties:
       S3BucketName: !Ref TrailS3Bucket
@@ -385,20 +405,26 @@ Resources:
                   - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*SnapshotListFunction*'
                   - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*TriggerStateMachineFunction*'
                   - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*DNSUpdateFunction*'
-              - Effect: Allow
-                Action:
-                  - s3:DeleteObject
-                  - s3:GetObject
-                  - s3:ListBucket
-                Resource: !GetAtt TrailS3Bucket.Arn
-              - Effect: Allow
-                Action:
-                  - s3:DeleteObject
-                  - s3:GetObject
-                  - s3:ListBucket
-                Resource: !Sub 
-                  - arn:aws:s3:::${Bucket}/*
-                  - Bucket: !Ref TrailS3Bucket
+              - !If
+                - ShouldCreateTrail
+                - Effect: Allow
+                  Action:
+                    - s3:DeleteObject
+                    - s3:GetObject
+                    - s3:ListBucket
+                  Resource: !GetAtt TrailS3Bucket.Arn
+                - !Ref AWS::NoValue
+              - !If
+                - ShouldCreateTrail
+                - Effect: Allow
+                  Action:
+                    - s3:DeleteObject
+                    - s3:GetObject
+                    - s3:ListBucket
+                  Resource: !Sub
+                    - arn:aws:s3:::${Bucket}/*
+                    - Bucket: !Ref TrailS3Bucket
+                - !Ref AWS::NoValue
  
   ConfigureFunction:
     Type: AWS::Serverless::Function
@@ -420,7 +446,10 @@ Resources:
     Type: Custom::ConfigureFunction
     Properties:
       ServiceToken: !GetAtt ConfigureFunction.Arn
-      CloudTrailBucketName: !Ref TrailS3Bucket
+      CloudTrailBucketName: !If
+        - ShouldCreateTrail
+        - !Ref TrailS3Bucket
+        - ""
   
   SnapshotFunctionRole:
     Type: AWS::IAM::Role

@@ -55,10 +55,12 @@ def configure_application(event, context):
             secret_handler.delete(ACCESS_TOKEN_NAME)
             secret_handler.delete(REFRESH_TOKEN_NAME)
 
-            # empty CloudTrail bucket and remove it
-            s3_client = boto3.resource('s3')
-            bucket = s3_client.Bucket(event['ResourceProperties']['CloudTrailBucketName'])
-            bucket.objects.all().delete()
+            # empty CloudTrail bucket and remove it (only if the stack created one)
+            bucket_name = event['ResourceProperties'].get('CloudTrailBucketName')
+            if bucket_name:
+                s3_client = boto3.resource('s3')
+                bucket = s3_client.Bucket(bucket_name)
+                bucket.objects.all().delete()
 
             # clean up log groups
             delete_log_groups()
