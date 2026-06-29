@@ -32,13 +32,19 @@ Parameters:
       - "true"
       - "false"
     Description: >
-      Set to "true" only if your AWS account does NOT already have an active
-      multi-region CloudTrail trail with IncludeGlobalServiceEvents enabled.
-      Most accounts already have a default trail; leave as "false" to avoid
-      creating a duplicate trail and incurring unnecessary charges.
+      Controls whether this stack creates a dedicated CloudTrail trail.
+      Set to "false" if your AWS account already has an existing active CloudTrail
+      trail. The trail must be capturing Route 53 management events and delivering
+      them to EventBridge. If DNS sync stops working after setting this to "false",
+      your existing trail may not be configured correctly - set to "true" to have
+      this stack create a dedicated trail with the correct settings.
+      Set to "true" if you are unsure or if your account has no existing trail.
   CloudTrailName:
     Type: String
     Default: NS1CloudSyncTrail
+    Description: >
+      Name for the CloudTrail trail created by this stack.
+      Only used when CreateCloudTrail is "true". Ignored otherwise.
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
@@ -736,3 +742,30 @@ Resources:
     Properties:
       ServiceToken: !GetAtt TriggerStateMachineFunction.Arn
     DependsOn: SnapshotStateMachine
+
+Outputs:
+  CloudTrailStatus:
+    Description: >
+      Whether this stack created a CloudTrail trail. If "Not managed by this stack",
+      ensure your account has an existing active CloudTrail trail that captures
+      Route 53 management events. If DNS sync stops working, your existing trail
+      may not be configured correctly - redeploy with CreateCloudTrail=true.
+      If upgrading from a previous version, the old NS1CloudSyncTrail may remain
+      as an orphaned resource — once sync is verified working you can safely delete
+      it along with its S3 bucket and KMS key to stop incurring charges.
+    Value: !If
+      - ShouldCreateTrail
+      - !Sub "Created and managed by this stack: ${Trail}"
+      - "Not managed by this stack - ensure your existing trail captures Route 53 management events"
+
+  EventBridgeRuleArn:
+    Description: ARN of the EventBridge rule that captures Route 53 events
+    Value: !GetAtt EventRule.Arn
+
+  DNSUpdateQueueUrl:
+    Description: URL of the SQS queue receiving Route 53 change events
+    Value: !GetAtt DNSUpdateQueue.QueueUrl
+
+  DNSUpdateFunctionArn:
+    Description: ARN of the Lambda function processing Route 53 change events
+    Value: !GetAtt DNSUpdateFunction.Arn
