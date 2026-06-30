@@ -43,8 +43,11 @@ Parameters:
     Type: String
     Default: NS1CloudSyncTrail
     Description: >
-      Name for the CloudTrail trail created by this stack.
+      Name for the new CloudTrail trail created by this stack.
       Only used when CreateCloudTrail is "true". Ignored otherwise.
+      WARNING: Do not set this to the name of an existing trail such as
+      "management-events" — this stack will delete the trail when it is
+      removed or when CreateCloudTrail is changed to "false".
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
@@ -411,26 +414,27 @@ Resources:
                   - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*SnapshotListFunction*'
                   - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*TriggerStateMachineFunction*'
                   - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*DNSUpdateFunction*'
-              - !If
-                - ShouldCreateTrail
-                - Effect: Allow
-                  Action:
-                    - s3:DeleteObject
-                    - s3:GetObject
-                    - s3:ListBucket
-                  Resource: !GetAtt TrailS3Bucket.Arn
-                - !Ref AWS::NoValue
-              - !If
-                - ShouldCreateTrail
-                - Effect: Allow
-                  Action:
-                    - s3:DeleteObject
-                    - s3:GetObject
-                    - s3:ListBucket
-                  Resource: !Sub
-                    - arn:aws:s3:::${Bucket}/*
-                    - Bucket: !Ref TrailS3Bucket
-                - !Ref AWS::NoValue
+              - Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource: !Sub 'arn:aws:s3:::cloudsync-trail-bucket-*'
+              - Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource: !Sub 'arn:aws:s3:::cloudsync-trail-bucket-*/*'
+              - Effect: Allow
+                Action:
+                  - cloudtrail:StopLogging
+                  - cloudtrail:DeleteTrail
+                Resource: !Sub 'arn:aws:cloudtrail:us-east-1:${AWS::AccountId}:trail/*'
  
   ConfigureFunction:
     Type: AWS::Serverless::Function
@@ -456,6 +460,8 @@ Resources:
         - ShouldCreateTrail
         - !Ref TrailS3Bucket
         - ""
+      CloudTrailName: !Ref CloudTrailName
+      CreateCloudTrail: !Ref CreateCloudTrail
   
   SnapshotFunctionRole:
     Type: AWS::IAM::Role

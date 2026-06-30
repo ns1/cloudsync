@@ -8,6 +8,8 @@ from secret_handler import SecretHandler
 secrets_manager_client = boto3.client('secretsmanager')
 cloudformation_client = boto3.client('cloudformation')
 logs_client = boto3.client('logs')
+cloudtrail_client = boto3.client('cloudtrail')
+s3_resource = boto3.resource('s3')
 
 # env variables
 ns1_api_key = os.environ['NS1_API_KEY']
@@ -48,6 +50,62 @@ def configure_application(event, context):
             else:
                 secret_handler.upsert(NS1_API_KEY_NAME, ns1_api_key)
 
+        elif request_type == 'Update':
+            # If CreateCloudTrail is transitioning from true → false (or upgrading
+            # from 0.4.3 where CreateCloudTrail did not exist and the trail was always
+            # created), the stack will attempt to delete the Trail, TrailS3Bucket and
+            # TrailKMSKey resources. The S3 bucket cannot be deleted by CloudFormation
+            # while it still has objects in it, so we empty it and delete the trail here
+            # before CloudFormation attempts resource deletion.
+            # Note: OldResourceProperties will not contain CreateCloudTrail when
+            # upgrading from 0.4.3 (the parameter did not exist in that version and
+            # the trail was always created). Defaulting to 'true' here means the
+            # upgrade path correctly detects the true→false transition and cleans up
+            # the old trail and bucket. This is NOT the customer-facing default —
+            # the template parameter default is 'false'.
+            old_create_trail = event['OldResourceProperties'].get('CreateCloudTrail', 'true')
+            # new_create_trail uses 'true' as fallback only for safety — in practice
+            # this key will always be present in ResourceProperties from 0.4.4 onwards.
+            new_create_trail = event['ResourceProperties'].get('CreateCloudTrail', 'true')
+
+            if old_create_trail == 'true' and new_create_trail == 'false':
+                trail_name = event['OldResourceProperties'].get('CloudTrailName', 'NS1CloudSyncTrail')
+
+                # CloudTrailBucketName is not present in OldResourceProperties when
+                # upgrading from 0.4.3 — find the bucket by its known name prefix instead.
+                bucket_name = event['OldResourceProperties'].get('CloudTrailBucketName')
+                if not bucket_name:
+                    s3_client = boto3.client('s3')
+                    buckets = s3_client.list_buckets().get('Buckets', [])
+                    for b in buckets:
+                        if b['Name'].startswith('cloudsync-trail-bucket-'):
+                            bucket_name = b['Name']
+                            break
+
+                # stop and delete the trail so it releases the bucket.
+                # Safety guard: only delete trails with names that match known
+                # CloudSync-created trail names. We never delete trails that were
+                # not created by this stack.
+                # Known CloudSync trail names across all versions:
+                #   - NS1CloudSyncTrail (default from 0.4.x)
+                #   - CloudSyncTrail (used in older deployments)
+                # Any other name (e.g. management-events, org trails) is skipped.
+                cloudsync_trail_names = {'NS1CloudSyncTrail', 'CloudSyncTrail'}
+                if trail_name in cloudsync_trail_names:
+                    try:
+                        cloudtrail_client.stop_logging(Name=trail_name)
+                        cloudtrail_client.delete_trail(Name=trail_name)
+                        print(f"Deleted CloudSync-managed trail: {trail_name}")
+                    except cloudtrail_client.exceptions.TrailNotFoundException:
+                        pass
+                else:
+                    print(f"Skipping deletion of trail not managed by CloudSync: {trail_name}")
+
+                # empty the S3 bucket so CloudFormation can delete it
+                if bucket_name:
+                    bucket = s3_resource.Bucket(bucket_name)
+                    bucket.objects.all().delete()
+
         elif request_type == 'Delete':
             # clean up secrets stored in Secrets Manager
             secret_handler.delete(NS1_API_KEY_NAME)
@@ -58,8 +116,7 @@ def configure_application(event, context):
             # empty CloudTrail bucket and remove it (only if the stack created one)
             bucket_name = event['ResourceProperties'].get('CloudTrailBucketName')
             if bucket_name:
-                s3_client = boto3.resource('s3')
-                bucket = s3_client.Bucket(bucket_name)
+                bucket = s3_resource.Bucket(bucket_name)
                 bucket.objects.all().delete()
 
             # clean up log groups
