@@ -38,11 +38,16 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: CloudSyncUpdatesDLQueue
+      MessageRetentionPeriod: 1209600
 
   DNSUpdateQueue:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: CloudSyncUpdatesQueue
+      VisibilityTimeout: 60
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt UpdatesDeadLetterQueue.Arn
+        maxReceiveCount: 5
 
   # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
@@ -311,14 +316,14 @@ Resources:
         Layers:
           - !Sub arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
           - !Ref SharedLayer
-        EventInvokeConfig:
-          MaximumRetryAttempts: 2
         Events:
           UpdateQueueEvent:
             Type: SQS
             Properties:
               Queue: !GetAtt DNSUpdateQueue.Arn
               BatchSize: 5
+              FunctionResponseTypes:
+                - ReportBatchItemFailures
 
   ConfigureFunctionRole:
     Type: AWS::IAM::Role
