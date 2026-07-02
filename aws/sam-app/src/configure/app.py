@@ -41,6 +41,8 @@ def configure_application(event, context):
     elif cloud_sync_api_key:
         secret_handler.upsert(CS_API_KEY_NAME, cloud_sync_api_key)
 
+    retained_bucket = ""
+
     try:
         request_type = event['RequestType']
         if request_type == 'Create':
@@ -53,15 +55,19 @@ def configure_application(event, context):
         elif request_type == 'Update':
             # If CreateCloudTrail is transitioning from true → false (or upgrading
             # from 0.4.3 where CreateCloudTrail did not exist and the trail was always
-            # created), the stack will attempt to delete the Trail, TrailS3Bucket and
-            # TrailKMSKey resources. The S3 bucket cannot be deleted by CloudFormation
-            # while it still has objects in it, so we empty it and delete the trail here
-            # before CloudFormation attempts resource deletion.
+            # created), stop and delete the CloudSync-managed trail so it stops writing
+            # to the S3 bucket.
+            # The S3 bucket is intentionally NOT emptied or deleted here. Bucket deletion
+            # may take a long time depending on the size of the bucket, and may cause the
+            # CloudFormation stack update to timeout or fail if the deletion takes too long.
+            # The customer is warned via CloudWatch logs to empty and delete the bucket
+            # manually once they have verified DNS sync is working.
+            #
             # Note: OldResourceProperties will not contain CreateCloudTrail when
             # upgrading from 0.4.3 (the parameter did not exist in that version and
             # the trail was always created). Defaulting to 'true' here means the
             # upgrade path correctly detects the true→false transition and cleans up
-            # the old trail and bucket. This is NOT the customer-facing default —
+            # the old trail. This is NOT the customer-facing default —
             # the template parameter default is 'false'.
             old_create_trail = event['OldResourceProperties'].get('CreateCloudTrail', 'true')
             # new_create_trail uses 'true' as fallback only for safety — in practice
@@ -82,7 +88,7 @@ def configure_application(event, context):
                             bucket_name = b['Name']
                             break
 
-                # stop and delete the trail so it releases the bucket.
+                # Stop and delete the trail so it stops writing to the S3 bucket.
                 # Safety guard: only delete trails with names that match known
                 # CloudSync-created trail names. We never delete trails that were
                 # not created by this stack.
@@ -101,10 +107,22 @@ def configure_application(event, context):
                 else:
                     print(f"Skipping deletion of trail not managed by CloudSync: {trail_name}")
 
-                # empty the S3 bucket so CloudFormation can delete it
+                # The S3 bucket is intentionally retained. Emptying it synchronously
+                # risks exceeding the Lambda timeout on large buckets and leaving the
+                # stack in UPDATE_ROLLBACK_FAILED. The trail has been stopped so no
+                # new objects will be written. The customer must empty and delete the
+                # bucket manually.
                 if bucket_name:
-                    bucket = s3_resource.Bucket(bucket_name)
-                    bucket.objects.all().delete()
+                    retained_bucket = bucket_name
+                    print(
+                        f"WARNING: CloudTrail log bucket '{bucket_name}' has been retained. "
+                        f"The trail has been stopped — no new logs will be written. "
+                        f"Please empty and delete this bucket manually once you have "
+                        f"verified that DNS sync is working correctly. "
+                        f"You can do this from the S3 console or with the AWS CLI: "
+                        f"aws s3 rm s3://{bucket_name} --recursive && "
+                        f"aws s3api delete-bucket --bucket {bucket_name}"
+                    )
 
         elif request_type == 'Delete':
             # clean up secrets stored in Secrets Manager
@@ -127,7 +145,9 @@ def configure_application(event, context):
         response_data = build_response(event, 'FAILED', {"foo": "bar"}, reason=str(err))
     
     else:
-        response_data = build_response(event, 'SUCCESS', {"foo": "bar"})
+        response_data = build_response(event, 'SUCCESS', {
+            "RetainedCloudTrailBucket": retained_bucket,
+        })
 
     # Respond to Cloudformation to let it know we are done
     response_url = event['ResponseURL']
