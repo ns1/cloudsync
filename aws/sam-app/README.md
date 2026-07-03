@@ -26,7 +26,7 @@ off across the Internet to the NS1 CloudSync REST API endpoint.  Events are then
 |---|---|---|
 | `NS1APIKey` | *(required)* | Your NS1 Connect account API key. |
 | `CreateCloudTrail` | `false` | Set to `true` only if your AWS account has no existing active multi-region CloudTrail trail. Most accounts already have a default trail (`management-events`); leave as `false` to avoid creating a duplicate trail and incurring unnecessary charges. |
-| `CloudTrailName` | `NS1CloudSyncTrail` | Name for the trail. Only used when `CreateCloudTrail` is `true`. |
+| `CloudTrailName` | `NS1CloudSyncTrail` | **Only used when `CreateCloudTrail` is `true`** — leave as default if `CreateCloudTrail` is `false`. Name for the new trail created by this stack. Do not set this to the name of an existing trail. |
 
 ## Security and permissions
 You will need to provide an NS1 API key when installing the stack. A secret in AWS Secrets Manager is created for this key. When the `dns_updates` Lambda initializes it will request the key

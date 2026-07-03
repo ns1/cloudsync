@@ -42,9 +42,14 @@ Parameters:
   CloudTrailName:
     Type: String
     Default: NS1CloudSyncTrail
-    Description: >
+    AllowedPattern: "^(?!management-events$)(?!aws-controltower-BaselineCloudTrail$)(?!AccountTrail$).+"
+    ConstraintDescription: >-
+      CloudTrailName must not be the name of an existing system or organization trail
+      (e.g. management-events, aws-controltower-BaselineCloudTrail, AccountTrail).
+      Leave as default (NS1CloudSyncTrail) unless you have a specific reason to change it.
+    Description: >-
+      ONLY USED when CreateCloudTrail is "true" — ignored otherwise, leave as default.
       Name for the new CloudTrail trail created by this stack.
-      Only used when CreateCloudTrail is "true". Ignored otherwise.
       WARNING: Do not set this to the name of an existing trail such as
       "management-events" — this stack will delete the trail when it is
       removed or when CreateCloudTrail is changed to "false".
@@ -756,10 +761,11 @@ Outputs:
       ensure your account has an existing active CloudTrail trail that captures
       Route 53 management events. If DNS sync stops working, your existing trail
       may not be configured correctly - redeploy with CreateCloudTrail=true.
-      If upgrading from 0.4.3: the old trail has been stopped and deleted, but the
-      S3 log bucket (cloudsync-trail-bucket-*) has been retained. Once you have
-      verified DNS sync is working, empty and delete the bucket manually to stop
-      incurring storage charges.
+      If upgrading from a previous version that created its own trail: the old trail
+      has been stopped and deleted, but the S3 log bucket (cloudsync-trail-bucket-*)
+      has been retained. Check the RetainedCloudTrailBucket output for the bucket name.
+      Once you have verified DNS sync is working, empty and delete the bucket manually
+      to stop incurring storage charges.
     Value: !If
       - ShouldCreateTrail
       - !Sub "Created and managed by this stack: ${Trail}"
@@ -780,7 +786,7 @@ Outputs:
   RetainedCloudTrailBucket:
     Description: >-
       Name of the CloudTrail log bucket retained after upgrading from a version that
-      created a trail. This bucket is no longer needed — empty and delete it manually
-      to stop incurring storage charges. Empty if no bucket was retained during this
-      deployment.
+      created a trail. This bucket is no longer needed and can be safely deleted to
+      stop incurring storage charges. If no bucket was retained during this deployment,
+      this value will be empty.
     Value: !GetAtt ConfigureCustomResource.RetainedCloudTrailBucket
