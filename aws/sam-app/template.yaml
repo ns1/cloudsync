@@ -31,9 +31,34 @@ Parameters:
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
-
+  LambdaRoleName:
+    Type: String
+  AccountId:
+    Type: String
+  
 
 Resources:
+  Route53NSUpdaterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: Route53NSUpdaterRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AccountId}:role/${LambdaRoleName}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: Route53NSUpdaterRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                Resource: "arn:aws:route53:::hostedzone/*"
+
   UpdatesDeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -302,7 +327,7 @@ Resources:
         Role: !GetAtt DNSUpdateFunctionRole.Arn
         Environment:
           Variables:
-            ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
+            ENDPOINT: https://api.nszero.com/cloudsync/v1beta1
             ACCOUNT_ID: !Ref AWS::AccountId
             ENABLE_ZONE_OMIT: true
             ZONE_SYNC_TAG: NS1CloudSync
@@ -452,7 +477,7 @@ Resources:
         - !Ref SharedLayer
       Environment:
           Variables:
-            ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
+            ENDPOINT: https://api.nszero.com/cloudsync/v1beta1
             ENABLE_ZONE_OMIT: true
             ZONE_SYNC_TAG: NS1CloudSync
             SYNC_DEST: ns1
@@ -488,7 +513,7 @@ Resources:
       Environment:
           Variables:
             ACCOUNT_ID: !Ref AWS::AccountId
-            ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
+            ENDPOINT: https://api.nszero.com/cloudsync/v1beta1
             SYNC_DEST: ns1
 
   HCSnapshotFunctionRole:
