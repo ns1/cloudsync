@@ -17,6 +17,22 @@ route53_client = boto3.client('route53')
 secret_handler = SecretHandler()
 
 
+def zone_has_sync_tag(tags):
+    return zone_sync_tag in {tag['Key'] for tag in tags}
+
+
+def change_batch_is_ns_only(detail):
+    changes = detail.get('requestParameters', {}).get('changeBatch', {}).get('changes', [])
+
+    if not changes:
+        return False
+
+    return all(
+        change.get('resourceRecordSet', {}).get('type') == 'NS'
+        for change in changes
+    )
+
+
 def record_handler(record):
     try: 
         body = json.loads(record['body'])
@@ -81,6 +97,7 @@ def handle_health_checks(record):
         'dest': snapshot_dest,
         'version': 1,
         'account_id': account_id,
+        'provider_account_id': account_id,
         'msg_type': 'update',
         'zone_name': 'health-checks',
         'zone_id': 'health-checks',
@@ -110,6 +127,7 @@ def handle_cidr_collections(record):
         'dest': snapshot_dest,
         'version': 1,
         'account_id': account_id,
+        'provider_account_id': account_id,
         'msg_type': 'update',
         'zone_name': 'cidr-collections',
         'zone_id': 'cidr-collections',
@@ -173,9 +191,20 @@ def handle_zones_and_records(zone_id, record):
                         
                     return
 
-            if zone_sync_tag not in [t['Key'] for t in tags]:
-                # skip zone
+            if not zone_has_sync_tag(tags):
+                print(
+                    f"skipping {event_name} for hosted zone {zone_id}: "
+                    f"required tag {zone_sync_tag} is not present"
+                )
+                # fail closed on zones that are not explicitly opted in
                 return
+
+        if event_name == 'ChangeResourceRecordSets' and not change_batch_is_ns_only(body['detail']):
+            print(
+                f"skipping ChangeResourceRecordSets for hosted zone {zone_id}: "
+                "change batch contains non-NS record types"
+            )
+            return
 
 
     msg = {
@@ -183,6 +212,7 @@ def handle_zones_and_records(zone_id, record):
         'dest': snapshot_dest,
         'version': 1,
         'account_id': account_id,
+        'provider_account_id': account_id,
         'msg_type': 'update',
         'zone_id': zone_id,
         'zone_name': zone_name,

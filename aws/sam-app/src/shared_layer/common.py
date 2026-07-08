@@ -29,6 +29,7 @@ def snapshot_zone(
     dest, 
     s3_bucket_name, 
     secret_handler, 
+    provider_account_id=None,
     max_page_size=constants.MAX_PAGE_SIZE, 
     marker=None
 ):
@@ -50,6 +51,7 @@ def snapshot_zone(
         'dest': dest,
         'bucket': s3_bucket_name,
         'version': 1,
+        'provider_account_id': provider_account_id,
         'msg_type': 'snapshot',
         'page': page_counter,
         'truncated': response['IsTruncated'],
