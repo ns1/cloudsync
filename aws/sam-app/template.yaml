@@ -21,8 +21,8 @@ Metadata:
     ReadmeUrl: ./README.md
     Labels: [serverless, NS1, Route53, DNS]
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: 0.4.3
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.3
+    SemanticVersion: 0.4.4
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.4
 
 Parameters:
   CloudTrailName:
