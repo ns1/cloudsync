@@ -5,7 +5,7 @@ Description: This serverless application publishes AWS Route 53 events to NS1 Co
 Globals:
   Function:
     Timeout: 60
-    Runtime: python3.11
+    Runtime: python3.13
     Tracing: Active
   Api:
     TracingEnabled: True
@@ -31,11 +31,6 @@ Parameters:
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
-  LambdaRoleName:
-    Type: String
-  AccountId:
-    Type: String
-  
 
 Resources:
   Route53NSUpdaterRole:
@@ -47,7 +42,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub arn:aws:iam::${AccountId}:role/${LambdaRoleName}
+              AWS: !Sub arn:aws:iam::536697259099:role/processorIAMRole-dev
             Action: sts:AssumeRole
       Policies:
         - PolicyName: Route53NSUpdaterRolePolicy
