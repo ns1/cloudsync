@@ -42,7 +42,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub arn:aws:iam::536697259099:role/processorIAMRole-dev
+              AWS: !Sub arn:aws:iam::761018877004:role/processorIAMRole-prod
             Action: sts:AssumeRole
       Policies:
         - PolicyName: Route53NSUpdaterRolePolicy
