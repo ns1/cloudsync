@@ -21,18 +21,6 @@ def zone_has_sync_tag(tags):
     return zone_sync_tag in {tag['Key'] for tag in tags}
 
 
-def change_batch_is_ns_only(detail):
-    changes = detail.get('requestParameters', {}).get('changeBatch', {}).get('changes', [])
-
-    if not changes:
-        return False
-
-    return all(
-        change.get('resourceRecordSet', {}).get('type') == 'NS'
-        for change in changes
-    )
-
-
 def record_handler(record):
     try: 
         body = json.loads(record['body'])
@@ -198,14 +186,6 @@ def handle_zones_and_records(zone_id, record):
                 )
                 # fail closed on zones that are not explicitly opted in
                 return
-
-        if event_name == 'ChangeResourceRecordSets' and not change_batch_is_ns_only(body['detail']):
-            print(
-                f"skipping ChangeResourceRecordSets for hosted zone {zone_id}: "
-                "change batch contains non-NS record types"
-            )
-            return
-
 
     msg = {
         'source': 'route53',
