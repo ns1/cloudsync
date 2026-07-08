@@ -31,6 +31,7 @@ def handle_health_checks(health_check_list, is_truncated):
         'dest': snapshot_dest,
         'version': 1,
         'account_id': account_id,
+        'provider_account_id': account_id,
         'msg_type': 'snapshot',
         'data_type': 'health-checks',
         'zone_name': 'health-checks',

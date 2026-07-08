@@ -6,6 +6,28 @@ import requests
 import functools
 import constants
 
+
+def parse_token_response(token_res, token_endpoint, context):
+    try:
+        tokens = token_res.json()
+    except requests.exceptions.JSONDecodeError as exc:
+        raise Exception(
+            f"Token request returned non-JSON response during {context}. "
+            f"Status: {token_res.status_code}. "
+            f"Endpoint: {token_endpoint}. "
+            f"Response: {token_res.text}"
+        ) from exc
+
+    if 'data' not in tokens:
+        raise Exception(
+            f"Token request returned unexpected JSON during {context}. "
+            f"Status: {token_res.status_code}. "
+            f"Endpoint: {token_endpoint}. "
+            f"Response: {token_res.text}"
+        )
+
+    return tokens
+
 def get_tags_for_zones(route53_client, zone_ids: List[str]) -> dict:
     tags = dict()
 
@@ -29,6 +51,7 @@ def snapshot_zone(
     dest, 
     s3_bucket_name, 
     secret_handler, 
+    provider_account_id=None,
     max_page_size=constants.MAX_PAGE_SIZE, 
     marker=None
 ):
@@ -50,6 +73,7 @@ def snapshot_zone(
         'dest': dest,
         'bucket': s3_bucket_name,
         'version': 1,
+        'provider_account_id': provider_account_id,
         'msg_type': 'snapshot',
         'page': page_counter,
         'truncated': response['IsTruncated'],
@@ -81,6 +105,7 @@ def insert_token(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         endpoint, _, secret_handler = args
+        token_endpoint = f"{endpoint}/token"
 
         # attempt to use existing access token
         access_token = secret_handler.get_if_present(constants.ACCESS_TOKEN_NAME)
@@ -93,14 +118,32 @@ def insert_token(func):
         # renewal if nearing expiry
         if not access_token or time_to_expire < constants.TOKEN_REFRESH_WINDOW:
             refresh_token = secret_handler.get_if_present(constants.REFRESH_TOKEN_NAME)
+            tokens = None
 
             if refresh_token:
-                token_res = requests.post(f"{endpoint}/token", headers={'Authorization': f"Bearer {refresh_token}"})
+                token_res = requests.post(
+                    token_endpoint,
+                    headers={'Authorization': f"Bearer {refresh_token}"}
+                )
+
+                if token_res.status_code == 200:
+                    try:
+                        tokens = parse_token_response(
+                            token_res,
+                            token_endpoint,
+                            "refresh-token renewal",
+                        )
+                    except Exception:
+                        tokens = None
 
             # if failed to renew with refresh_token, use the api_key
-            if not refresh_token or token_res.status_code != 200:
-                token_res = get_tokens_using_api_key(f"{endpoint}/token", secret_handler)
-            tokens = token_res.json()
+            if tokens is None:
+                token_res = get_tokens_using_api_key(token_endpoint, secret_handler)
+                tokens = parse_token_response(
+                    token_res,
+                    token_endpoint,
+                    "api-key exchange",
+                )
 
             # update secret manager
             secret_handler.upsert(constants.ACCESS_TOKEN_NAME, tokens['data']['access_token'])
