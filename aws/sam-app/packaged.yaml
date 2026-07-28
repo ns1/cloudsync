@@ -23,8 +23,8 @@ Metadata:
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.4.4'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.4
+    SemanticVersion: '0.4.5'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.5
 Parameters:
   CloudTrailName:
     Type: String
@@ -283,7 +283,7 @@ Resources:
     Properties:
       LayerName: CloudSyncSharedLayer
       Description: Common functions
-      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d0e4e71dc4f539e0aa5591da15946a21
+      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d039e5ba235f51b5adbfc3dea991670b
       CompatibleRuntimes:
       - python3.11
       RetentionPolicy: Delete
@@ -376,7 +376,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncDNSUpdateFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/8f4004c4c4291120b9ce5ad51d070ab4
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/8c65d817f7b8b21d4e6a63f637184d6c
       Handler: app.handler
       Timeout: 10
       Role:
@@ -478,7 +478,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncConfigureFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/7adea402221d6df8f6356623c3dce81a
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/b8986695f01389cb13b2a4b65944bf0e
       Handler: app.configure_application
       Timeout: 300
       Role:
@@ -554,7 +554,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncSnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/dccfaa920f2843fe0718fcf2401b52aa
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/bca65b343d87c7cb35f21359c065a746
       Handler: app.lambda_handler
       Role:
         Fn::GetAtt:
@@ -578,7 +578,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncSnapshotListFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/efd6e634a8a930cc1f3cfa0ae5659335
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5cd66b8abe52b88f0d3c8f40fff8f32e
       Handler: app.lambda_handler
       Policies:
       - Version: '2012-10-17'
@@ -596,7 +596,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncHCSnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6ce44e100c74420bcbbc3c4bf193e9bb
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/451b661e63f84cb47cd0f5b6be921c00
       Handler: app.lambda_handler
       Role:
         Fn::GetAtt:
@@ -739,7 +739,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncTriggerStateMachineFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/628025057636a45987a776f2fe2226e1
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/504d27b882f65af836f3189e314b7264
       Handler: app.lambda_handler
       Policies:
       - Version: '2012-10-17'
