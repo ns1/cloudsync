@@ -54,7 +54,7 @@ def configure_application(event, context):
 
         elif request_type == 'Update':
             # If CreateCloudTrail is transitioning from true → false (or upgrading
-            # from 0.4.3 where CreateCloudTrail did not exist and the trail was always
+            # from a version <0.4.6 where CreateCloudTrail did not exist and the trail was always
             # created), stop and delete the CloudSync-managed trail so it stops writing
             # to the S3 bucket.
             # The S3 bucket is intentionally NOT emptied or deleted here. Bucket deletion
@@ -64,21 +64,21 @@ def configure_application(event, context):
             # manually once they have verified DNS sync is working.
             #
             # Note: OldResourceProperties will not contain CreateCloudTrail when
-            # upgrading from 0.4.3 (the parameter did not exist in that version and
+            # upgrading from a version <0.4.6 (the parameter did not exist in those versions and
             # the trail was always created). Defaulting to 'true' here means the
             # upgrade path correctly detects the true→false transition and cleans up
             # the old trail. This is NOT the customer-facing default —
             # the template parameter default is 'false'.
             old_create_trail = event['OldResourceProperties'].get('CreateCloudTrail', 'true')
             # new_create_trail uses 'true' as fallback only for safety — in practice
-            # this key will always be present in ResourceProperties from 0.4.4 onwards.
+            # this key will always be present in ResourceProperties from 0.4.6 onwards.
             new_create_trail = event['ResourceProperties'].get('CreateCloudTrail', 'true')
 
             if old_create_trail == 'true' and new_create_trail == 'false':
                 trail_name = event['OldResourceProperties'].get('CloudTrailName', 'NS1CloudSyncTrail')
 
                 # CloudTrailBucketName is not present in OldResourceProperties when
-                # upgrading from 0.4.3 — find the bucket by its known name prefix instead.
+                # upgrading from a version <0.4.6 — find the bucket by its known name prefix instead.
                 bucket_name = event['OldResourceProperties'].get('CloudTrailBucketName')
                 if not bucket_name:
                     s3_client = boto3.client('s3')
