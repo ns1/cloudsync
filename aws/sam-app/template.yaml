@@ -21,16 +21,44 @@ Metadata:
     ReadmeUrl: ./README.md
     Labels: [serverless, NS1, Route53, DNS]
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: 0.4.5
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.5
+    SemanticVersion: 0.4.6
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.6
 
 Parameters:
+  CreateCloudTrail:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Controls whether this stack creates a dedicated CloudTrail trail.
+      Set to "false" if your AWS account already has an existing active CloudTrail
+      trail. The trail must be capturing Route 53 management events and delivering
+      them to EventBridge. If DNS sync stops working after setting this to "false",
+      your existing trail may not be configured correctly - set to "true" to have
+      this stack create a dedicated trail with the correct settings.
+      Set to "true" if you are unsure or if your account has no existing trail.
   CloudTrailName:
     Type: String
     Default: NS1CloudSyncTrail
+    AllowedPattern: "^(?!management-events$)(?!aws-controltower-BaselineCloudTrail$)(?!AccountTrail$).+"
+    ConstraintDescription: >-
+      CloudTrailName must not be the name of an existing system or organization trail
+      (e.g. management-events, aws-controltower-BaselineCloudTrail, AccountTrail).
+      Leave as default (NS1CloudSyncTrail) unless you have a specific reason to change it.
+    Description: >-
+      ONLY USED when CreateCloudTrail is "true" — ignored otherwise, leave as default.
+      Name for the new CloudTrail trail created by this stack.
+      WARNING: Do not set this to the name of an existing trail such as
+      "management-events" — this stack will delete the trail when it is
+      removed or when CreateCloudTrail is changed to "false".
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
+
+Conditions:
+  ShouldCreateTrail: !Equals [!Ref CreateCloudTrail, "true"]
 
 Resources:
   Route53NSUpdaterRole:
@@ -71,7 +99,8 @@ Resources:
   # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
     Type: AWS::KMS::Key
-    Properties: 
+    Condition: ShouldCreateTrail
+    Properties:
       Enabled: true
       KeySpec: SYMMETRIC_DEFAULT
       KeyUsage: ENCRYPT_DECRYPT
@@ -147,6 +176,7 @@ Resources:
   # S3 bucket for CloudTrail.
   TrailS3Bucket:
     Type: AWS::S3::Bucket
+    Condition: ShouldCreateTrail
     DeletionPolicy: Delete
     Properties:
       BucketName: !Join ['-', ['cloudsync-trail-bucket', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
@@ -154,6 +184,7 @@ Resources:
   # Bucket policy to allow CloudTrail access to the bucket.
   TrailBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldCreateTrail
     Properties:
       Bucket: !Ref TrailS3Bucket
       PolicyDocument:
@@ -180,9 +211,12 @@ Resources:
               StringEquals:
                 s3:x-amz-acl: bucket-owner-full-control
 
-  # There must be a trail in order for EventBridge to capture events from Route 53.
+  # A trail is only created when no existing trail is present in the account.
+  # EventBridge receives Route 53 management events from any active trail, so the
+  # default AWS trail (management-events) is sufficient for most accounts.
   Trail:
     Type: AWS::CloudTrail::Trail
+    Condition: ShouldCreateTrail
     DependsOn: TrailBucketPolicy
     Properties:
       S3BucketName: !Ref TrailS3Bucket
@@ -387,18 +421,25 @@ Resources:
                   - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*DNSUpdateFunction*'
               - Effect: Allow
                 Action:
-                  - s3:DeleteObject
-                  - s3:GetObject
-                  - s3:ListBucket
-                Resource: !GetAtt TrailS3Bucket.Arn
+                  - s3:ListAllMyBuckets
+                Resource: '*'
               - Effect: Allow
                 Action:
                   - s3:DeleteObject
                   - s3:GetObject
                   - s3:ListBucket
-                Resource: !Sub 
-                  - arn:aws:s3:::${Bucket}/*
-                  - Bucket: !Ref TrailS3Bucket
+                Resource: !Sub 'arn:aws:s3:::cloudsync-trail-bucket-*'
+              - Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource: !Sub 'arn:aws:s3:::cloudsync-trail-bucket-*/*'
+              - Effect: Allow
+                Action:
+                  - cloudtrail:StopLogging
+                  - cloudtrail:DeleteTrail
+                Resource: !Sub 'arn:aws:cloudtrail:us-east-1:${AWS::AccountId}:trail/*'
  
   ConfigureFunction:
     Type: AWS::Serverless::Function
@@ -420,7 +461,12 @@ Resources:
     Type: Custom::ConfigureFunction
     Properties:
       ServiceToken: !GetAtt ConfigureFunction.Arn
-      CloudTrailBucketName: !Ref TrailS3Bucket
+      CloudTrailBucketName: !If
+        - ShouldCreateTrail
+        - !Ref TrailS3Bucket
+        - ""
+      CloudTrailName: !Ref CloudTrailName
+      CreateCloudTrail: !Ref CreateCloudTrail
   
   SnapshotFunctionRole:
     Type: AWS::IAM::Role
@@ -707,3 +753,40 @@ Resources:
     Properties:
       ServiceToken: !GetAtt TriggerStateMachineFunction.Arn
     DependsOn: SnapshotStateMachine
+
+Outputs:
+  CloudTrailStatus:
+    Description: >-
+      Whether this stack created a CloudTrail trail. If "Not managed by this stack",
+      ensure your account has an existing active CloudTrail trail that captures
+      Route 53 management events. If DNS sync stops working, your existing trail
+      may not be configured correctly - redeploy with CreateCloudTrail=true.
+      If upgrading from a previous version that created its own trail: the old trail
+      has been stopped and deleted, but the S3 log bucket (cloudsync-trail-bucket-*)
+      has been retained. Check the RetainedCloudTrailBucket output for the bucket name.
+      Once you have verified DNS sync is working, empty and delete the bucket manually
+      to stop incurring storage charges.
+    Value: !If
+      - ShouldCreateTrail
+      - !Sub "Created and managed by this stack: ${Trail}"
+      - "Not managed by this stack - ensure your existing trail captures Route 53 management events"
+
+  EventBridgeRuleArn:
+    Description: ARN of the EventBridge rule that captures Route 53 events
+    Value: !GetAtt EventRule.Arn
+
+  DNSUpdateQueueUrl:
+    Description: URL of the SQS queue receiving Route 53 change events
+    Value: !GetAtt DNSUpdateQueue.QueueUrl
+
+  DNSUpdateFunctionArn:
+    Description: ARN of the Lambda function processing Route 53 change events
+    Value: !GetAtt DNSUpdateFunction.Arn
+
+  RetainedCloudTrailBucket:
+    Description: >-
+      Name of the CloudTrail log bucket retained after upgrading from a version that
+      created a trail. This bucket is no longer needed and can be safely deleted to
+      stop incurring storage charges. If no bucket was retained during this deployment,
+      this value will be empty.
+    Value: !GetAtt ConfigureCustomResource.RetainedCloudTrailBucket
