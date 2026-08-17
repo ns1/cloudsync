@@ -31,7 +31,13 @@ Parameters:
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
+  DLQAlarmNotificationArn:
+    Type: String
+    Default: ''
+    Description: Optional SNS topic ARN to notify when Route 53 update messages land in the dead-letter queue (CloudSyncUpdatesDLQueue). Leave blank to skip notifications; the alarm is still visible in CloudWatch either way.
 
+Conditions:
+  HasDLQAlarmNotification: !Not [!Equals [!Ref DLQAlarmNotificationArn, '']]
 
 Resources:
   UpdatesDeadLetterQueue:
@@ -48,6 +54,25 @@ Resources:
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt UpdatesDeadLetterQueue.Arn
         maxReceiveCount: 5
+
+  UpdatesDeadLetterQueueAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: CloudSyncUpdatesDLQueueNotEmpty
+      AlarmDescription: One or more Route 53 update messages failed delivery to NS1 and landed in CloudSyncUpdatesDLQueue for investigation.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt UpdatesDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        !If [HasDLQAlarmNotification, [!Ref DLQAlarmNotificationArn], !Ref "AWS::NoValue"]
 
   # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
