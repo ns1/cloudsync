@@ -82,7 +82,12 @@ class TestLambdaHandler(unittest.TestCase):
 
         result = lambda_handler(event, context)
 
-        self.assertEqual(result, {})
+        # When a zone is omitted, dns_snapshot returns the updated iterator
+        # state (not {}). Verify snapshot_zone was not called and the
+        # current_zone_index was incremented past the skipped zone.
+        mock_snapshot_zone.assert_not_called()
+        self.assertEqual(result['current_zone_index'], 1)
+        self.assertEqual(result['zones_count'], 1)
 
 
 if __name__ == '__main__':

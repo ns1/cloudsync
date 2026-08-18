@@ -12,6 +12,7 @@ zone_omit_enabled = os.environ.get('ENABLE_ZONE_OMIT', True)
 zone_sync_tag = os.environ.get('ZONE_SYNC_TAG', 'NS1CloudSync')
 snapshot_dest = os.environ.get('SYNC_DEST')
 s3_bucket_name = os.environ.get('SYNC_BUCKET')
+account_id = os.environ.get('ACCOUNT_ID')
 
 def lambda_handler(event, context):
     if (endpoint := os.environ.get('ENDPOINT')) is None:
@@ -54,6 +55,7 @@ def lambda_handler(event, context):
         snapshot_dest, 
         s3_bucket_name, 
         secret_handler, 
+        provider_account_id=account_id,
         marker=marker
     )
 

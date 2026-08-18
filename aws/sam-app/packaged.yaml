@@ -4,7 +4,7 @@ Description: This serverless application publishes AWS Route 53 events to NS1 Co
 Globals:
   Function:
     Timeout: 60
-    Runtime: python3.11
+    Runtime: python3.13
     Tracing: Active
   Api:
     TracingEnabled: true
@@ -16,23 +16,80 @@ Metadata:
     Author: NS1
     SpdxLicenseId: Apache-2.0
     LicenseUrl: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/86d3f3a95c324c9479bd8986968f4327
-    ReadmeUrl: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/16efd6fc765d483c4867e59be0268e3b
+    ReadmeUrl: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/88f031fa79b0248f4468d01985457afa
     Labels:
     - serverless
     - NS1
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.4.3'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.3
+    SemanticVersion: '0.4.6'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.6
 Parameters:
+  CreateCloudTrail:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+    - 'true'
+    - 'false'
+    Description: 'Controls whether this stack creates a dedicated CloudTrail trail.
+      Set to "false" if your AWS account already has an existing active CloudTrail
+      trail. The trail must be capturing Route 53 management events and delivering
+      them to EventBridge. If DNS sync stops working after setting this to "false",
+      your existing trail may not be configured correctly - set to "true" to have
+      this stack create a dedicated trail with the correct settings. Set to "true"
+      if you are unsure or if your account has no existing trail.
+
+      '
   CloudTrailName:
     Type: String
     Default: NS1CloudSyncTrail
+    AllowedPattern: ^(?!management-events$)(?!aws-controltower-BaselineCloudTrail$)(?!AccountTrail$).+
+    ConstraintDescription: CloudTrailName must not be the name of an existing system
+      or organization trail (e.g. management-events, aws-controltower-BaselineCloudTrail,
+      AccountTrail). Leave as default (NS1CloudSyncTrail) unless you have a specific
+      reason to change it.
+    Description: "ONLY USED when CreateCloudTrail is \"true\" \u2014 ignored otherwise,\
+      \ leave as default. Name for the new CloudTrail trail created by this stack.\
+      \ WARNING: Do not set this to the name of an existing trail such as \"management-events\"\
+      \ \u2014 this stack will delete the trail when it is removed or when CreateCloudTrail\
+      \ is changed to \"false\"."
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
+Conditions:
+  ShouldCreateTrail:
+    Fn::Equals:
+    - Ref: CreateCloudTrail
+    - 'true'
 Resources:
+  Route53NSUpdaterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: Route53NSUpdaterRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS:
+              Fn::Sub: arn:aws:iam::761018877004:role/processorIAMRole-prod
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: Route53NSUpdaterRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - route53:ChangeResourceRecordSets
+            Resource: arn:aws:route53:::hostedzone/*
+            Condition:
+              ForAllValues:StringEquals:
+                route53:ChangeResourceRecordSetsRecordTypes:
+                - NS
+    Metadata:
+      SamResourceId: Route53NSUpdaterRole
   UpdatesDeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -47,6 +104,7 @@ Resources:
       SamResourceId: DNSUpdateQueue
   TrailKMSKey:
     Type: AWS::KMS::Key
+    Condition: ShouldCreateTrail
     Properties:
       Enabled: true
       KeySpec: SYMMETRIC_DEFAULT
@@ -131,6 +189,7 @@ Resources:
       SamResourceId: TrailKMSKey
   TrailS3Bucket:
     Type: AWS::S3::Bucket
+    Condition: ShouldCreateTrail
     DeletionPolicy: Delete
     Properties:
       BucketName:
@@ -150,6 +209,7 @@ Resources:
       SamResourceId: TrailS3Bucket
   TrailBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldCreateTrail
     Properties:
       Bucket:
         Ref: TrailS3Bucket
@@ -186,6 +246,7 @@ Resources:
       SamResourceId: TrailBucketPolicy
   Trail:
     Type: AWS::CloudTrail::Trail
+    Condition: ShouldCreateTrail
     DependsOn: TrailBucketPolicy
     Properties:
       S3BucketName:
@@ -256,7 +317,7 @@ Resources:
     Properties:
       LayerName: CloudSyncSharedLayer
       Description: Common functions
-      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5259f10710c76d94cb2ee04c48a9f647
+      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d039e5ba235f51b5adbfc3dea991670b
       CompatibleRuntimes:
       - python3.11
       RetentionPolicy: Delete
@@ -349,7 +410,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncDNSUpdateFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/f2d2233631732cab9d8f4a01e3a0ae2b
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/7275877880f92da93b2cdbb40b09be4d
       Handler: app.handler
       Timeout: 10
       Role:
@@ -428,30 +489,35 @@ Resources:
             - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*DNSUpdateFunction*
           - Effect: Allow
             Action:
-            - s3:DeleteObject
-            - s3:GetObject
-            - s3:ListBucket
-            Resource:
-              Fn::GetAtt:
-              - TrailS3Bucket
-              - Arn
+            - s3:ListAllMyBuckets
+            Resource: '*'
           - Effect: Allow
             Action:
             - s3:DeleteObject
             - s3:GetObject
             - s3:ListBucket
             Resource:
-              Fn::Sub:
-              - arn:aws:s3:::${Bucket}/*
-              - Bucket:
-                  Ref: TrailS3Bucket
+              Fn::Sub: arn:aws:s3:::cloudsync-trail-bucket-*
+          - Effect: Allow
+            Action:
+            - s3:DeleteObject
+            - s3:GetObject
+            - s3:ListBucket
+            Resource:
+              Fn::Sub: arn:aws:s3:::cloudsync-trail-bucket-*/*
+          - Effect: Allow
+            Action:
+            - cloudtrail:StopLogging
+            - cloudtrail:DeleteTrail
+            Resource:
+              Fn::Sub: arn:aws:cloudtrail:us-east-1:${AWS::AccountId}:trail/*
     Metadata:
       SamResourceId: ConfigureFunctionRole
   ConfigureFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncConfigureFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/78e4892febfb92ee90068e2a5345e9a4
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6d23588d10c2c64ae0ad67991a609881
       Handler: app.configure_application
       Timeout: 300
       Role:
@@ -477,7 +543,14 @@ Resources:
         - ConfigureFunction
         - Arn
       CloudTrailBucketName:
-        Ref: TrailS3Bucket
+        Fn::If:
+        - ShouldCreateTrail
+        - Ref: TrailS3Bucket
+        - ''
+      CloudTrailName:
+        Ref: CloudTrailName
+      CreateCloudTrail:
+        Ref: CreateCloudTrail
     Metadata:
       SamResourceId: ConfigureCustomResource
   SnapshotFunctionRole:
@@ -527,7 +600,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncSnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5a8681f81fb4524f71d0053927fb4451
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/3973d0b91ac2f038f09a9cdcfd3e6230
       Handler: app.lambda_handler
       Role:
         Fn::GetAtt:
@@ -538,6 +611,8 @@ Resources:
       - Ref: SharedLayer
       Environment:
         Variables:
+          ACCOUNT_ID:
+            Ref: AWS::AccountId
           ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
           ENABLE_ZONE_OMIT: true
           ZONE_SYNC_TAG: NS1CloudSync
@@ -549,7 +624,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncSnapshotListFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6346f73355fe42e74b1db62680ff9cd4
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/3eb338e2099b8affed6c70ce13cbdb5b
       Handler: app.lambda_handler
       Policies:
       - Version: '2012-10-17'
@@ -567,7 +642,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncHCSnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/4ffafff6ee1fa732115d44bd5b281671
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/3e6237008c5cd3a303819a0f788594fc
       Handler: app.lambda_handler
       Role:
         Fn::GetAtt:
@@ -710,7 +785,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncTriggerStateMachineFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5ebd0208ef3d8ebcc2878a9c97483b11
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/8a180dcc15bae43041f365dbcd76702a
       Handler: app.lambda_handler
       Policies:
       - Version: '2012-10-17'
@@ -739,3 +814,47 @@ Resources:
     DependsOn: SnapshotStateMachine
     Metadata:
       SamResourceId: TriggerSnapshotCustomResource
+Outputs:
+  CloudTrailStatus:
+    Description: 'Whether this stack created a CloudTrail trail. If "Not managed by
+      this stack", ensure your account has an existing active CloudTrail trail that
+      captures Route 53 management events. If DNS sync stops working, your existing
+      trail may not be configured correctly - redeploy with CreateCloudTrail=true.
+      If upgrading from a previous version that created its own trail: the old trail
+      has been stopped and deleted, but the S3 log bucket (cloudsync-trail-bucket-*)
+      has been retained. Check the RetainedCloudTrailBucket output for the bucket
+      name. Once you have verified DNS sync is working, empty and delete the bucket
+      manually to stop incurring storage charges.'
+    Value:
+      Fn::If:
+      - ShouldCreateTrail
+      - Fn::Sub: 'Created and managed by this stack: ${Trail}'
+      - Not managed by this stack - ensure your existing trail captures Route 53 management
+        events
+  EventBridgeRuleArn:
+    Description: ARN of the EventBridge rule that captures Route 53 events
+    Value:
+      Fn::GetAtt:
+      - EventRule
+      - Arn
+  DNSUpdateQueueUrl:
+    Description: URL of the SQS queue receiving Route 53 change events
+    Value:
+      Fn::GetAtt:
+      - DNSUpdateQueue
+      - QueueUrl
+  DNSUpdateFunctionArn:
+    Description: ARN of the Lambda function processing Route 53 change events
+    Value:
+      Fn::GetAtt:
+      - DNSUpdateFunction
+      - Arn
+  RetainedCloudTrailBucket:
+    Description: Name of the CloudTrail log bucket retained after upgrading from a
+      version that created a trail. This bucket is no longer needed and can be safely
+      deleted to stop incurring storage charges. If no bucket was retained during
+      this deployment, this value will be empty.
+    Value:
+      Fn::GetAtt:
+      - ConfigureCustomResource
+      - RetainedCloudTrailBucket
