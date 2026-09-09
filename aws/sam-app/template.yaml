@@ -100,6 +100,12 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: CloudSyncUpdatesQueue
+      # VisibilityTimeout controls how long a failed message stays hidden before
+      # SQS makes it available for retry. Must be >= the Lambda function timeout
+      # (DNSUpdateFunction is 10s). Set to 60s so transient 5xx failures from the
+      # token endpoint get a 1-minute cooling-off period between each retry attempt.
+      # This only affects messages that have already failed — new messages (e.g. a
+      # second zone created moments later) are processed immediately and unaffected.
       VisibilityTimeout: 60
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt UpdatesDeadLetterQueue.Arn
@@ -388,7 +394,7 @@ Resources:
         Role: !GetAtt DNSUpdateFunctionRole.Arn
         Environment:
           Variables:
-            ENDPOINT: https://api.nszero.com/cloudsync/v1beta1
+            ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
             ACCOUNT_ID: !Ref AWS::AccountId
             ENABLE_ZONE_OMIT: true
             ZONE_SYNC_TAG: NS1CloudSync
@@ -551,7 +557,7 @@ Resources:
       Environment:
           Variables:
             ACCOUNT_ID: !Ref AWS::AccountId
-            ENDPOINT: https://api.nszero.com/cloudsync/v1beta1
+            ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
             ENABLE_ZONE_OMIT: true
             ZONE_SYNC_TAG: NS1CloudSync
             SYNC_DEST: ns1
@@ -587,7 +593,7 @@ Resources:
       Environment:
           Variables:
             ACCOUNT_ID: !Ref AWS::AccountId
-            ENDPOINT: https://api.nszero.com/cloudsync/v1beta1
+            ENDPOINT: https://api.nsone.net/cloudsync/v1beta1
             SYNC_DEST: ns1
 
   HCSnapshotFunctionRole:
