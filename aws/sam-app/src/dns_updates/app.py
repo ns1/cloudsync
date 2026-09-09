@@ -211,9 +211,16 @@ def handle_zones_and_records(zone_id, record):
 def handler(event, context):
     print(event)
     response = {"batchItemFailures": []}
-    for record in event.get('Records'):
-        if (failedMessageId := record_handler(record)) is not None:
-            response['batchItemFailures'].append({"itemIdentifier": failedMessageId})
-    
+    for record in event.get('Records', []):
+        message_id = record.get('messageId')
+        try:
+            if (failed_message_id := record_handler(record)) is not None:
+                response['batchItemFailures'].append({"itemIdentifier": failed_message_id})
+        except Exception:
+            # Report only this record so SQS retries just it (DLQ after maxReceiveCount);
+            # re-raising would fail the whole batch and re-POST already-synced records to NS1.
+            print(f"record_handler failed for messageId={message_id}")
+            response['batchItemFailures'].append({"itemIdentifier": message_id})
+
     print(response)
     return response
