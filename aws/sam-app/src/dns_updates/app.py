@@ -4,7 +4,7 @@ import json
 import requests
 import boto3
 
-from common import dns_post
+from common import dns_post, UnauthorizedException
 from secret_handler import SecretHandler
 
 endpoint = os.environ.get('ENDPOINT')
@@ -216,6 +216,11 @@ def handler(event, context):
         try:
             if (failed_message_id := record_handler(record)) is not None:
                 response['batchItemFailures'].append({"itemIdentifier": failed_message_id})
+        except UnauthorizedException as e:
+            # 4xx from the token endpoint — permanent failure (expired entitlement,
+            # bad/revoked API key). Discard the message by not adding it to
+            # batchItemFailures so SQS deletes it rather than requeueing it.
+            print(f"Discarding message {message_id} — unauthorised: {e}")
         except Exception:
             # Report only this record so SQS retries just it (DLQ after maxReceiveCount);
             # re-raising would fail the whole batch and re-POST already-synced records to NS1.
