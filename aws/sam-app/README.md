@@ -22,6 +22,7 @@ When zones and records are created, changed, and deleted, events are automatical
 - **`NS1APIKey`** *(required)* — Your NS1 Connect account API key.
 - **`CreateCloudTrail`** (default: `false`) — Set to `true` only if your AWS account has no existing active multi-region CloudTrail trail. Most accounts already have a default trail (`management-events`); leave as `false` to avoid creating a duplicate trail and incurring unnecessary charges (~$3/month).
 - **`CloudTrailName`** (default: `NS1CloudSyncTrail`) — **Only used when `CreateCloudTrail` is `true`.** Leave as default if `CreateCloudTrail` is `false`. Name for the new trail created by this stack. Do not set this to the name of an existing trail.
+- **`DLQAlarmNotificationArn`** *(optional)* — ARN of an SNS topic to notify when CloudWatch alarms fire. Two alarms are created by this stack: one fires when a message lands in the dead-letter queue after repeated 5xx failures (`CloudSyncUpdatesDLQueueNotEmpty`); the other fires when a message is discarded due to an expired CloudSync entitlement or invalid API key (`CloudSyncSyncUnauthorized`). Leave blank to skip SNS notifications — both alarms remain visible in CloudWatch either way.
 
 ## Security and permissions
 
