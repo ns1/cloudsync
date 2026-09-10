@@ -135,7 +135,6 @@ def insert_token(func):
                         )
                     except Exception:
                         tokens = None
-
             # if failed to renew with refresh_token, use the api_key
             if tokens is None:
                 token_res = get_tokens_using_api_key(token_endpoint, secret_handler)
@@ -183,13 +182,14 @@ def get_tokens_using_api_key(token_endpoint, secret_handler):
     else:
         raise Exception("API keys are not set")
 
-    # request tokens from gateway 
+    # request tokens from gateway
     token_res = requests.post(token_endpoint, headers=headers)
     if token_res.status_code != 200:
+        # 4xx or 5xx — let SQS retry up to maxReceiveCount, then DLQ.
         raise Exception(
             f"Token request failed (status {token_res.status_code}). "
             f"Endpoint: {token_endpoint}. "
             f"Response: {token_res.text}"
         )
-        
+
     return token_res

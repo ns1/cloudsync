@@ -100,6 +100,12 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: CloudSyncUpdatesQueue
+      # VisibilityTimeout controls how long a failed message stays hidden before
+      # SQS makes it available for retry. Must be >= the Lambda function timeout
+      # (DNSUpdateFunction is 10s). Set to 60s so transient 5xx failures from the
+      # token endpoint get a 1-minute cooling-off period between each retry attempt.
+      # This only affects messages that have already failed — new messages (e.g. a
+      # second zone created moments later) are processed immediately and unaffected.
       VisibilityTimeout: 60
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt UpdatesDeadLetterQueue.Arn
@@ -378,8 +384,15 @@ Resources:
       SourceArn: !GetAtt EventRule.Arn
 
   # A Lambda residing in this account that receives updates from Route 53 via CloudTrail.
+  DNSUpdateFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/CloudSyncDNSUpdateFunction
+      RetentionInDays: 30
+
   DNSUpdateFunction:
       Type: AWS::Serverless::Function
+      DependsOn: DNSUpdateFunctionLogGroup
       Properties:
         FunctionName: CloudSyncDNSUpdateFunction
         CodeUri: ./src/dns_updates
