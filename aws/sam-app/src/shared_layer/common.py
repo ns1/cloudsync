@@ -7,16 +7,6 @@ import functools
 import constants
 
 
-class UnauthorizedException(Exception):
-    """Raised when the token endpoint returns a 4xx response.
-
-    This is a permanent failure — the API key is invalid, revoked, or the
-    CloudSync entitlement has expired. SQS messages that trigger this should
-    be discarded (not requeued) since retrying will never succeed.
-    """
-    pass
-
-
 def parse_token_response(token_res, token_endpoint, context):
     try:
         tokens = token_res.json()
@@ -145,17 +135,6 @@ def insert_token(func):
                         )
                     except Exception:
                         tokens = None
-                elif 400 <= token_res.status_code < 500:
-                    # 4xx on refresh token — permanent failure, no point trying
-                    # the API key either. Raise immediately so SQS discards
-                    # the message rather than requeueing it.
-                    raise UnauthorizedException(
-                        f"Token refresh rejected (status {token_res.status_code}) — "
-                        f"CloudSync entitlement may have expired or refresh token is invalid. "
-                        f"Endpoint: {token_endpoint}. "
-                        f"Response: {token_res.text}"
-                    )
-
             # if failed to renew with refresh_token, use the api_key
             if tokens is None:
                 token_res = get_tokens_using_api_key(token_endpoint, secret_handler)
@@ -206,17 +185,7 @@ def get_tokens_using_api_key(token_endpoint, secret_handler):
     # request tokens from gateway
     token_res = requests.post(token_endpoint, headers=headers)
     if token_res.status_code != 200:
-        if 400 <= token_res.status_code < 500:
-            # 4xx — permanent failure (expired entitlement, bad/revoked key).
-            # Raise UnauthorizedException so the caller can discard the message
-            # rather than returning it to the SQS queue for retry.
-            raise UnauthorizedException(
-                f"Token request rejected (status {token_res.status_code}) — "
-                f"CloudSync entitlement may have expired or API key is invalid. "
-                f"Endpoint: {token_endpoint}. "
-                f"Response: {token_res.text}"
-            )
-        # 5xx or unexpected status — transient failure, allow SQS to retry.
+        # 4xx or 5xx — let SQS retry up to maxReceiveCount, then DLQ.
         raise Exception(
             f"Token request failed (status {token_res.status_code}). "
             f"Endpoint: {token_endpoint}. "

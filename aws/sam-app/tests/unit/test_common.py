@@ -1,4 +1,4 @@
-"""Tests for shared_layer/common.py — token handling and UnauthorizedException."""
+"""Tests for shared_layer/common.py — token handling."""
 import sys
 import os
 import pytest
@@ -8,7 +8,7 @@ from requests import Response
 # shared_layer is a Lambda layer — add it to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/shared_layer'))
 
-from common import UnauthorizedException, get_tokens_using_api_key, insert_token
+from common import get_tokens_using_api_key, insert_token
 
 
 def make_response(status_code, text='{"data": {"access_token": "at", "refresh_token": "rt"}}'):
@@ -41,26 +41,26 @@ class TestGetTokensUsingApiKey:
             assert res.status_code == 200
             mock_post.assert_called_once()
 
-    def test_401_raises_unauthorized_exception(self):
+    def test_401_raises_exception(self):
+        """4xx raises a plain Exception so SQS retries and eventually routes to DLQ."""
         secret_handler = MockSecretHandler(ns1_key='expired-key')
         with patch('common.requests.post', return_value=make_response(401, '{"error":"user unauthorized"}')):
-            with pytest.raises(UnauthorizedException) as exc:
+            with pytest.raises(Exception) as exc:
                 get_tokens_using_api_key('https://endpoint/token', secret_handler)
             assert '401' in str(exc.value)
 
-    def test_403_raises_unauthorized_exception(self):
+    def test_403_raises_exception(self):
         secret_handler = MockSecretHandler(ns1_key='bad-key')
         with patch('common.requests.post', return_value=make_response(403, '{"error":"forbidden"}')):
-            with pytest.raises(UnauthorizedException):
+            with pytest.raises(Exception):
                 get_tokens_using_api_key('https://endpoint/token', secret_handler)
 
-    def test_500_raises_generic_exception(self):
+    def test_500_raises_exception(self):
         secret_handler = MockSecretHandler(ns1_key='valid-key')
         with patch('common.requests.post', return_value=make_response(500, 'internal error')):
             with pytest.raises(Exception) as exc:
                 get_tokens_using_api_key('https://endpoint/token', secret_handler)
-            # Must NOT be an UnauthorizedException — SQS should retry
-            assert not isinstance(exc.value, UnauthorizedException)
+            assert '500' in str(exc.value)
 
     def test_no_api_key_raises_exception(self):
         secret_handler = MockSecretHandler()
@@ -84,9 +84,9 @@ class TestInsertToken:
 
         return fake_post
 
-    def test_refresh_token_401_raises_unauthorized_exception(self):
-        """4xx on the refresh token path raises UnauthorizedException immediately
-        without falling through to the API key path."""
+    def test_refresh_token_401_falls_through_to_api_key(self):
+        """4xx on the refresh token path falls through to the API key path.
+        The API key in Secrets Manager may still be valid (e.g. key rotation)."""
         import constants
         secret_handler = MockSecretHandler(ns1_key='valid-key')
         secret_handler.upsert(constants.ACCESS_TOKEN_NAME, None)
@@ -94,8 +94,30 @@ class TestInsertToken:
 
         fake_post = self._make_handler()
 
-        with patch('common.requests.post', return_value=make_response(401, '{"error":"user unauthorized"}')):
-            with pytest.raises(UnauthorizedException):
+        responses = [
+            make_response(401, '{"error":"user unauthorized"}'),  # refresh token → 401
+            make_response(200),                                    # api key → 200
+        ]
+        with patch('common.requests.post', side_effect=responses):
+            # Should succeed — fell through to API key path
+            result = fake_post('https://endpoint', {}, secret_handler)
+            assert result.status_code == 202
+
+    def test_refresh_token_401_and_api_key_also_fails_raises_exception(self):
+        """4xx on refresh token falls through to API key; if that also fails, raises Exception → DLQ."""
+        import constants
+        secret_handler = MockSecretHandler(ns1_key='expired-key')
+        secret_handler.upsert(constants.ACCESS_TOKEN_NAME, None)
+        secret_handler.upsert(constants.REFRESH_TOKEN_NAME, 'old-refresh-token')
+
+        fake_post = self._make_handler()
+
+        responses = [
+            make_response(401, '{"error":"user unauthorized"}'),  # refresh token → 401
+            make_response(401, '{"error":"user unauthorized"}'),  # api key → 401
+        ]
+        with patch('common.requests.post', side_effect=responses):
+            with pytest.raises(Exception):
                 fake_post('https://endpoint', {}, secret_handler)
 
     def test_refresh_token_500_falls_through_to_api_key(self):

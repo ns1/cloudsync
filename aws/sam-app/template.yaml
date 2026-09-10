@@ -130,45 +130,6 @@ Resources:
       AlarmActions:
         !If [HasDLQAlarmNotification, [!Ref DLQAlarmNotificationArn], !Ref "AWS::NoValue"]
 
-  # Fires when the Lambda discards a message due to a 4xx token response (expired
-  # entitlement or invalid/revoked API key). Unlike 5xx failures, 4xx messages are
-  # never retried and never reach the DLQ — so this alarm is the only signal that
-  # inbound syncing has permanently stopped for this account.
-  SyncUnauthorizedAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: CloudSyncSyncUnauthorized
-      AlarmDescription: >-
-        Inbound DNS sync messages are being discarded because the CloudSync
-        entitlement has expired or the API key is invalid. Inbound syncing has
-        stopped — update or redeploy the stack with a valid API key.
-      Namespace: CloudSync
-      MetricName: CloudSyncSyncUnauthorized
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: notBreaching
-      AlarmActions:
-        !If [HasDLQAlarmNotification, [!Ref DLQAlarmNotificationArn], !Ref "AWS::NoValue"]
-
-  # Metric filter that increments CloudSyncSyncUnauthorized whenever the Lambda
-  # logs a discarded-message line from the UnauthorizedException handler.
-  # DependsOn DNSUpdateFunctionLogGroup ensures the log group exists before
-  # CloudFormation tries to attach the filter (Lambda creates log groups lazily).
-  SyncUnauthorizedMetricFilter:
-    Type: AWS::Logs::MetricFilter
-    DependsOn: DNSUpdateFunctionLogGroup
-    Properties:
-      LogGroupName: !Sub /aws/lambda/${DNSUpdateFunction}
-      FilterPattern: '"Discarding message"'
-      MetricTransformations:
-        - MetricName: CloudSyncSyncUnauthorized
-          MetricNamespace: CloudSync
-          MetricValue: "1"
-          DefaultValue: 0
-
   # KMS key for CloudTrail S3 bucket.
   TrailKMSKey:
     Type: AWS::KMS::Key
