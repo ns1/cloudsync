@@ -384,15 +384,8 @@ Resources:
       SourceArn: !GetAtt EventRule.Arn
 
   # A Lambda residing in this account that receives updates from Route 53 via CloudTrail.
-  DNSUpdateFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: /aws/lambda/CloudSyncDNSUpdateFunction
-      RetentionInDays: 30
-
   DNSUpdateFunction:
       Type: AWS::Serverless::Function
-      DependsOn: DNSUpdateFunctionLogGroup
       Properties:
         FunctionName: CloudSyncDNSUpdateFunction
         CodeUri: ./src/dns_updates
