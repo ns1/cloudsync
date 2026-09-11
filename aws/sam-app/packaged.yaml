@@ -16,15 +16,15 @@ Metadata:
     Author: NS1
     SpdxLicenseId: Apache-2.0
     LicenseUrl: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/86d3f3a95c324c9479bd8986968f4327
-    ReadmeUrl: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/88f031fa79b0248f4468d01985457afa
+    ReadmeUrl: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/3eaeaf31301e196795e809ed39e5d230
     Labels:
     - serverless
     - NS1
     - Route53
     - DNS
     HomePageUrl: https://github.com/ns1/cloudsync
-    SemanticVersion: '0.4.6'
-    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.6
+    SemanticVersion: '0.4.7'
+    SourceCodeUrl: https://github.com/ns1/cloudsync/tree/0.4.7
 Parameters:
   CreateCloudTrail:
     Type: String
@@ -57,7 +57,18 @@ Parameters:
   NS1APIKey:
     Type: String
     Description: NS1 account API key.
+  DLQAlarmNotificationArn:
+    Type: String
+    Default: ''
+    Description: Optional SNS topic ARN to notify when Route 53 update messages land
+      in the dead-letter queue (CloudSyncUpdatesDLQueue). Leave blank to skip notifications;
+      the alarm is still visible in CloudWatch either way.
 Conditions:
+  HasDLQAlarmNotification:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: DLQAlarmNotificationArn
+      - ''
   ShouldCreateTrail:
     Fn::Equals:
     - Ref: CreateCloudTrail
@@ -94,14 +105,49 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: CloudSyncUpdatesDLQueue
+      MessageRetentionPeriod: 1209600
     Metadata:
       SamResourceId: UpdatesDeadLetterQueue
   DNSUpdateQueue:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: CloudSyncUpdatesQueue
+      VisibilityTimeout: 60
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+          - UpdatesDeadLetterQueue
+          - Arn
+        maxReceiveCount: 5
     Metadata:
       SamResourceId: DNSUpdateQueue
+  UpdatesDeadLetterQueueAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: CloudSyncUpdatesDLQueueNotEmpty
+      AlarmDescription: One or more Route 53 update messages failed delivery to NS1
+        and landed in CloudSyncUpdatesDLQueue for investigation.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+      - Name: QueueName
+        Value:
+          Fn::GetAtt:
+          - UpdatesDeadLetterQueue
+          - QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        Fn::If:
+        - HasDLQAlarmNotification
+        - - Ref: DLQAlarmNotificationArn
+        - Ref: AWS::NoValue
+    Metadata:
+      SamResourceId: UpdatesDeadLetterQueueAlarm
   TrailKMSKey:
     Type: AWS::KMS::Key
     Condition: ShouldCreateTrail
@@ -317,7 +363,7 @@ Resources:
     Properties:
       LayerName: CloudSyncSharedLayer
       Description: Common functions
-      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/8b3c6d5874fad55e71dceff84a62d4a4
+      ContentUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/7f2d22c1e1577fcaf8f468dff575428a
       CompatibleRuntimes:
       - python3.11
       RetentionPolicy: Delete
@@ -410,7 +456,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncDNSUpdateFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/4eef64468e7a3b343fdf0e8515384d82
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/9064bd10d6c241c5ed31165b8fea80cb
       Handler: app.handler
       Timeout: 10
       Role:
@@ -432,8 +478,6 @@ Resources:
       Layers:
       - Fn::Sub: arn:aws:lambda:${AWS::Region}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:4
       - Ref: SharedLayer
-      EventInvokeConfig:
-        MaximumRetryAttempts: 2
       Events:
         UpdateQueueEvent:
           Type: SQS
@@ -443,6 +487,8 @@ Resources:
               - DNSUpdateQueue
               - Arn
             BatchSize: 5
+            FunctionResponseTypes:
+            - ReportBatchItemFailures
     Metadata:
       SamResourceId: DNSUpdateFunction
   ConfigureFunctionRole:
@@ -517,7 +563,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncConfigureFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/4acea290305294fd1fa5079983fb9951
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d6730cfc348ef8872b83e20dfe821fba
       Handler: app.configure_application
       Timeout: 300
       Role:
@@ -600,7 +646,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncSnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/5651b05b1db37247fd7a72a29f2444de
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/041e041f9af7e088e3db9d8a6ee276b4
       Handler: app.lambda_handler
       Role:
         Fn::GetAtt:
@@ -624,7 +670,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncSnapshotListFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/74914cd18b4791cb4c5d611fb9d9a920
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/4f6d7e88371af97e53e996cda717168c
       Handler: app.lambda_handler
       Policies:
       - Version: '2012-10-17'
@@ -642,7 +688,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncHCSnapshotFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/55694e1a2ae304c2173f8cbe192f103a
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/6586f78f236604c908eb1a488648dc59
       Handler: app.lambda_handler
       Role:
         Fn::GetAtt:
@@ -785,7 +831,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: CloudSyncTriggerStateMachineFunction
-      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/268f6a6998731980cc24080d4a4a9666
+      CodeUri: s3://aws-sam-cli-managed-default-samclisourcebucket-5bpg79c8x6lw/d144bf65e29a2a05b8900d4248a74b2e
       Handler: app.lambda_handler
       Policies:
       - Version: '2012-10-17'
