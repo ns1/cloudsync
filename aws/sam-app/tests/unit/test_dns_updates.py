@@ -143,5 +143,46 @@ class TestRecordHandlerContract(unittest.TestCase):
         self.assertIsNone(record_handler(record))
 
 
+class TestDelegationSetForwarding(unittest.TestCase):
+    """The hosted zone's assigned nameservers are forwarded so CloudSync can tell the default apex NS from a customer edit."""
+
+    @staticmethod
+    def _change_record():
+        detail = {
+            "userIdentity": {"arn": "arn:aws:iam::111122223333:user/tester"},
+            "eventName": "ChangeResourceRecordSets",
+            "requestParameters": {"hostedZoneId": "/hostedzone/Z123", "changeBatch": {"changes": []}},
+        }
+        return _record("m1", detail)
+
+    def _post_body(self, hosted_zone_response):
+        with patch("src.dns_updates.app.route53_client") as mock_route53, \
+             patch("src.dns_updates.app.zone_omit_enabled", False), \
+             patch("src.dns_updates.app.dns_post") as mock_dns_post:
+            mock_route53.get_hosted_zone.return_value = hosted_zone_response
+            mock_route53.list_tags_for_resource.return_value = {"ResourceTagSet": {"Tags": []}}
+            mock_dns_post.return_value = MagicMock(status_code=202, content=b"")
+
+            self.assertIsNone(record_handler(self._change_record()))
+
+            return mock_dns_post.call_args.args[1]
+
+    def test_delegation_set_is_forwarded(self):
+        nameservers = ["ns-1.awsdns-01.com", "ns-2.awsdns-02.net", "ns-3.awsdns-03.org", "ns-4.awsdns-04.co.uk"]
+
+        msg = self._post_body({
+            "HostedZone": {"Name": "example.com."},
+            "DelegationSet": {"NameServers": nameservers},
+        })
+
+        self.assertEqual(msg["delegation_set"], nameservers)
+
+    def test_delegation_set_is_omitted_when_route53_returns_none(self):
+        """A private hosted zone has no DelegationSet."""
+        msg = self._post_body({"HostedZone": {"Name": "example.com."}})
+
+        self.assertNotIn("delegation_set", msg)
+
+
 if __name__ == "__main__":
     unittest.main()

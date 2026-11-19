@@ -139,12 +139,15 @@ def handle_zones_and_records(zone_id, record):
         return record['messageId']
     
     zone_name = zone_id
+    delegation_set = []
 
     event_name = body['detail'].get('eventName')
     if event_name != 'DeleteHostedZone':
         # get zone metadata
-        r = route53_client.get_hosted_zone(Id=zone_id)    
+        r = route53_client.get_hosted_zone(Id=zone_id)
         zone_name = r['HostedZone']['Name']
+        # the nameservers Route 53 assigned to the zone, which the apex NS holds unless the customer edits the NS record
+        delegation_set = r.get('DelegationSet', {}).get('NameServers', [])
         
         tags = route53_client.list_tags_for_resource(
             ResourceType='hostedzone',
@@ -200,6 +203,10 @@ def handle_zones_and_records(zone_id, record):
         'truncated': False,
         'payload': body['detail']
     }
+
+    if delegation_set:
+        # lets CloudSync differentiate the zone's default apex NS from an edit made by the customer
+        msg['delegation_set'] = delegation_set
 
     response = dns_post(endpoint, msg, secret_handler)
 
